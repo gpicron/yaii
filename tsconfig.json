@@ -1,0 +1,28 @@
+{
+    "include": [
+        "src/**/*",
+	    "test/**/test-*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
+    "compilerOptions": {
+        "target": "es6",
+        "module": "commonjs",
+        "lib": ["es6", "dom"],
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "outDir": "./dist",
+        "downlevelIteration": false,
+        "experimentalDecorators": true,
+        "resolveJsonModule": true,
+        "strict": true,
+        "baseUrl": "./",
+        "paths": {
+            "*": ["src/@types/*"]
+        },
+        "esModuleInterop": true
+    }
+}

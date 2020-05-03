@@ -1,0 +1,16 @@
+{
+    "mode": "file",
+    "out": "./doc",
+    "exclude": [
+        "./node_modules/**/*",
+        "./dist/**/*",
+        "./test/**/*"
+    ],
+    "excludePrivate": true,
+    "excludeNotExported": true,
+    "module": "commonjs",
+    "target": "ES6",
+    "readme": "none",
+    "name": "yaii",
+    "ignoreCompilerErrors": true
+}

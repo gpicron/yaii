@@ -1,0 +1,137 @@
+{
+  "name": "@gpicron/yaii",
+  "version": "0.0.0-development",
+  "description": "Yet Another Inverted Index in Typescript",
+  "main": "dist/src/index.js",
+  "types": "dist/src/yaii-types.d.ts",
+  "scripts": {
+    "prepublishOnly": "npm run clean && npm run compile",
+    "compile": "tsc",
+    "watch:compile": "nodemon -e 'ts json' -x 'npm run compile || true'",
+    "clean": "rimraf --no-glob dist",
+    "lint-staged": "lint-staged",
+    "ava": "ava -v test/**/test-*.ts",
+    "ava-perf-tests": "ava -v -s test/**/performance-*.ts",
+    "ava:fail-fast": "ava -v --fail-fast test/**/test-*.ts",
+    "ava:serial": "ava -v -s test/**/test-*.ts",
+    "watch:ava": "nodemon -e 'ts json' -x 'npm run ava || true'",
+    "watch:ava:fail-fast": "nodemon -e 'ts json' -x 'npm run ava:fail-fast || true'",
+    "watch:ava:serial": "nodemon -e 'ts json' -x 'npm run ava:serial || true'",
+    "watch:ava:bell": "nodemon -e 'ts json' -x 'npm run ava || echo -e \\\\a'",
+    "watch:ava:fail-fast:bell": "nodemon -e 'ts json' -x 'npm run ava:fail-fast || echo -e \\\\a'",
+    "watch:ava:serial:bell": "nodemon -e 'ts json' -x 'npm run ava:serial || echo -e \\\\a'",
+    "lint": "eslint --ext ts .",
+    "lint:fix": "eslint --ext ts --fix .",
+    "prettier:check": "prettier --list-different src/**/*.ts",
+    "prettier:write": "prettier --write src/**/*.ts",
+    "watch:lint": "nodemon -e 'ts js json' -x 'npm run lint || true'",
+    "test": "nyc ava",
+    "watch:test": "nodemon -e 'ts json' -x 'npm test || true'",
+    "coverage": "nyc report --reporter=text-lcov > coverage.lcov && codecov",
+    "typedoc": "typedoc  --options typedoc.json"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "pre-commit": "lint-staged",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gpicron/yaii.git"
+  },
+  "author": "Geoffrey Picron <geoffrey.picron@arboratum.com> (https://github.com/gpicron)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/gpicron/yaii/issues"
+  },
+  "homepage": "https://github.com/gpicron/yaii",
+  "devDependencies": {
+    "@fraction/flotilla": "^5.0.1",
+    "@types/bytebuffer": "^5.0.40",
+    "@types/long": "^4.0.1",
+    "@types/moo": "^0.5.3",
+    "@types/node": "^13.7.4",
+    "@types/pify": "^3.0.2",
+    "@types/pull-stream": "^3.6.0",
+    "@types/rimraf": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^2.20.0",
+    "@typescript-eslint/parser": "^2.20.0",
+    "ava": "^3.4.0",
+    "ava-fast-check": "^1.1.2",
+    "codecov": "^3.6.5",
+    "cz-conventional-changelog": "^3.1.0",
+    "eslint": "^6.8.0",
+    "eslint-plugin-ava": "^10.2.0",
+    "eslint-plugin-security": "^1.4.0",
+    "fast-check": "^1.22.2",
+    "get-port": "^5.1.1",
+    "lint-staged": "^10.0.7",
+    "nyc": "^15.0.0",
+    "pify": "^5.0.0",
+    "pre-commit": "^1.2.2",
+    "prettier": "^1.19.1",
+    "pull-stream": "^3.6.14",
+    "rimraf": "^3.0.2",
+    "secret-stack": "^6.3.1",
+    "semantic-release": "^17.0.7",
+    "ssb-backlinks": "^1.0.0",
+    "ssb-db": "^19.4.0",
+    "ssb-master": "^1.0.3",
+    "ssb-ref": "^2.13.9",
+    "ssb-typescript": "^2.0.0",
+    "ts-node": "^8.6.2",
+    "typedoc": "^0.17.3",
+    "typedoc-plugin-markdown": "^2.2.16",
+    "typescript": "^3.8.2"
+  },
+  "files": [
+    "dist/src/"
+  ],
+  "ava": {
+    "files": [
+      "!dist/**/*.d.ts",
+      "test/**/test-*.ts",
+      "test/**/performance-*.ts"
+    ],
+    "extensions": [
+      "ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ]
+  },
+  "nyc": {
+    "include": [
+      "src/**/*.ts"
+    ],
+    "extension": [
+      ".ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ]
+  },
+  "keywords": [
+    "scuttlebutt"
+  ],
+  "private": false,
+  "dependencies": {
+    "buckets-js": "^1.98.2",
+    "bytebuffer": "^5.0.1",
+    "collections": "^5.1.11",
+    "ix": "^3.0.2",
+    "moo": "^0.5.1",
+    "npm-dts": "^1.2.1",
+    "protobufjs": "^6.9.0",
+    "roaring": "^1.0.6",
+    "typescript-collections": "^1.3.3",
+    "utfx": "^1.0.1"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  }
+}
