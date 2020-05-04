@@ -16,11 +16,7 @@ import {
 
 import { IndexSegment } from './index-segment'
 import { removeAll } from './utils'
-import {
-    BitmapAsyncIterable,
-    DocIdAsyncIterable,
-    SingletonDocIdAsyncIterable
-} from './bitmap'
+import { BitmapAsyncIterable, DocIdAsyncIterable, SingletonDocIdAsyncIterable } from './bitmap'
 import * as Long from 'long'
 
 export enum INTERNAL_FIELDS {
@@ -30,22 +26,17 @@ export enum INTERNAL_FIELDS {
 }
 
 export abstract class Exp {
-    rewrite(): Exp {
+    // eslint-disable-next-line
+    rewrite(segment: IndexSegment): Exp {
         return this
     }
 
-    abstract async resolve(
-        segment: IndexSegment,
-        forceResolveToBitmap?: boolean
-    ): Promise<DocIdAsyncIterable>
+    abstract async resolve(segment: IndexSegment, forceResolveToBitmap?: boolean): Promise<DocIdAsyncIterable>
 }
 
 export class AllExp extends Exp {
     async resolve(segment: IndexSegment): Promise<DocIdAsyncIterable> {
-        const m = RoaringBitmap32.fromRange(
-            segment.from,
-            segment.size + segment.from
-        )
+        const m = RoaringBitmap32.fromRange(segment.from, segment.size + segment.from)
         return new BitmapAsyncIterable(m, true)
     }
 
@@ -191,13 +182,9 @@ export class BooleanExpression implements Exp {
 
         // bubble up must(mustNot) ==> mustNot
         if (must.size > 0) {
-            ;[...must].forEach(function(m) {
-                if (
-                    m instanceof BooleanExpression &&
-                    m.must.length == 0 &&
-                    m.should.length == 0
-                ) {
-                    ;[...m.mustNot].forEach(mustNot.add)
+            ;[...must].forEach(m => {
+                if (m instanceof BooleanExpression && m.must.length == 0 && m.should.length == 0) {
+                    ;[...m.mustNot].forEach(n => mustNot.add(n))
                     must.delete(m)
                 }
             })
@@ -220,41 +207,30 @@ export class BooleanExpression implements Exp {
             return ALL_EXP
         }
 
-        return new BooleanExpression(
-            Array.from(should),
-            Array.from(must),
-            Array.from(mustNot)
-        )
+        return new BooleanExpression(Array.from(should), Array.from(must), Array.from(mustNot))
     }
 
-    async resolve(
-        segment: IndexSegment,
-        forceResolveToBitmap: boolean = false
-    ): Promise<DocIdAsyncIterable> {
-        const resolvedMust = this.must.map(async oper =>
-            oper.resolve(segment, true)
-        )
+    async resolve(segment: IndexSegment, forceResolveToBitmap: boolean = false): Promise<DocIdAsyncIterable> {
+        const resolvedMust = this.must.map(async oper => oper.resolve(segment, true))
 
-        const mapMusts = new Array<BitmapAsyncIterable>()
+        const mapMusts = new Array<DocIdAsyncIterable>()
         const lazyMusts = new Array<DocIdAsyncIterable>()
 
         for await (const m of resolvedMust) {
-            if (BitmapAsyncIterable.is(m)) {
+            if (BitmapAsyncIterable.is(m) || SingletonDocIdAsyncIterable.is(m)) {
                 mapMusts.push(m)
             } else {
                 lazyMusts.push(m)
             }
         }
 
-        const resolvedMustNots = this.mustNot.map(async oper =>
-            oper.resolve(segment, true)
-        )
+        const resolvedMustNots = this.mustNot.map(async oper => oper.resolve(segment, true))
 
-        const mapMustNots = new Array<BitmapAsyncIterable>()
+        const mapMustNots = new Array<DocIdAsyncIterable>()
         const lazyMustNots = new Array<DocIdAsyncIterable>()
 
         for await (const m of resolvedMustNots) {
-            if (BitmapAsyncIterable.is(m)) {
+            if (BitmapAsyncIterable.is(m) || SingletonDocIdAsyncIterable.is(m)) {
                 mapMustNots.push(m)
             } else {
                 lazyMustNots.push(m)
@@ -267,9 +243,9 @@ export class BooleanExpression implements Exp {
         if (resolvedMust.length > 0) {
             if (mapMusts.length > 0) {
                 mapMusts.sort((a, b) => a.size - b.size)
-                const first = mapMusts.shift() as BitmapAsyncIterable
+                const first = mapMusts.shift() as DocIdAsyncIterable
                 if (first.canUpdateInPlace) {
-                    must = first
+                    must = first as BitmapAsyncIterable
                 } else {
                     must = first.clone()
                 }
@@ -326,9 +302,7 @@ export class BooleanExpression implements Exp {
         forceResolveToBitmap = true
         /// ---
 
-        const should = this.should.map(async (exp: Exp) =>
-            exp.resolve(segment, forceResolveToBitmap)
-        )
+        const should = this.should.map(async (exp: Exp) => exp.resolve(segment, forceResolveToBitmap))
 
         if (should.length == 0) {
             if (must) {
@@ -361,10 +335,7 @@ export class BooleanExpression implements Exp {
                 if (bitmaps.length > 0) {
                     result = BitmapAsyncIterable.orMany(bitmaps)
                 } else {
-                    result = new BitmapAsyncIterable(
-                        new RoaringBitmap32(),
-                        true
-                    )
+                    result = new BitmapAsyncIterable(new RoaringBitmap32(), true)
                 }
 
                 for (const singleton of singletons) {
@@ -488,10 +459,7 @@ export async function buildExpression(query: Query): Promise<Exp> {
             if (typeof value === 'string') {
                 return new TermExp(fieldNameOrAll(q), stringToTerm(value))
             } else if (typeof value === 'boolean') {
-                return new TermExp(
-                    fieldNameOrAll(q),
-                    value ? TERM_TRUE : TERM_FALSE
-                )
+                return new TermExp(fieldNameOrAll(q), value ? TERM_TRUE : TERM_FALSE)
             }
         }
         case QueryOperator.AND: {
@@ -510,18 +478,13 @@ export async function buildExpression(query: Query): Promise<Exp> {
         case QueryOperator.NOT: {
             const q = query as NotQuery
 
-            return new BooleanExpression(undefined, undefined, [
-                await buildExpression(q.operand)
-            ])
+            return new BooleanExpression(undefined, undefined, [await buildExpression(q.operand)])
         }
         case QueryOperator.NUMBER: {
             const q = query as NumberQuery
             const fieldName = fieldNameOrAll(q)
             const terms = numberToTerms(q.value)
-            const termExps = [
-                new TermExp(fieldName, terms[5]),
-                new TermExp(fieldName, terms[6])
-            ]
+            const termExps = [new TermExp(fieldName, terms[5]), new TermExp(fieldName, terms[6])]
 
             return new BooleanExpression(undefined, termExps)
         }
@@ -538,9 +501,7 @@ export async function buildExpression(query: Query): Promise<Exp> {
             if (q.min == Number.NEGATIVE_INFINITY) {
                 minInclusive = ZERO
             } else {
-                minInclusive = q.minInclusive
-                    ? BigInt(q.min)
-                    : BigInt(q.min) + ONE
+                minInclusive = q.minInclusive ? BigInt(q.min) : BigInt(q.min) + ONE
                 minInclusive += BI_MAX_SAFE
             }
 
@@ -548,17 +509,13 @@ export async function buildExpression(query: Query): Promise<Exp> {
             if (q.max == Number.POSITIVE_INFINITY) {
                 maxExclusive = BI_MAX_SAFE + BI_MAX_SAFE + ONE
             } else {
-                maxExclusive = q.maxInclusive
-                    ? BigInt(q.max) + ONE
-                    : BigInt(q.max)
+                maxExclusive = q.maxInclusive ? BigInt(q.max) + ONE : BigInt(q.max)
                 maxExclusive += BI_MAX_SAFE
             }
 
             const allterms = addRange(q.field, minInclusive, maxExclusive, 0)
 
-            return allterms.length == 0
-                ? new NoneExp()
-                : new BooleanExpression(allterms)
+            return allterms.length == 0 ? new NoneExp() : new BooleanExpression(allterms)
         }
         case QueryOperator.HAS_FIELD: {
             const q = query as FieldPresentQuery
@@ -571,13 +528,7 @@ export async function buildExpression(query: Query): Promise<Exp> {
     }
 }
 
-export function rangeToExp(
-    field: FieldName,
-    fromRange: bigint,
-    level: number,
-    fromRem: number,
-    toRem: number
-): Exp {
+export function rangeToExp(field: FieldName, fromRange: bigint, level: number, fromRem: number, toRem: number): Exp {
     if (level == 0) {
         let rangeTerm = Buffer.allocUnsafe(8)
         rangeTerm.writeBigUInt64BE(fromRange, 0)
@@ -614,12 +565,7 @@ export function rangeToExp(
 
 const ONE = BigInt(1)
 
-export function addRange(
-    field: FieldName,
-    from: bigint,
-    to: bigint,
-    level: number
-): Exp[] {
+export function addRange(field: FieldName, from: bigint, to: bigint, level: number): Exp[] {
     let terms = new Array<Exp>()
     if (from >= to) return terms
 
@@ -630,9 +576,7 @@ export function addRange(
     const toRem = Number(to % precision)
 
     if (fromRem == 0 && fromRange != toRange) {
-        terms = terms.concat(
-            addRange(field, fromRange, fromRange + ONE, level + 1)
-        )
+        terms = terms.concat(addRange(field, fromRange, fromRange + ONE, level + 1))
     } else {
         if (fromRange == toRange) {
             terms.push(rangeToExp(field, fromRange, level, fromRem, toRem))

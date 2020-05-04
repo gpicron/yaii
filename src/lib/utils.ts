@@ -1,14 +1,6 @@
-import {
-    FieldConfigFlagSet,
-    FieldName,
-    FieldValue,
-    FieldValues,
-    isFieldValue
-} from '../yaii-types'
+import { FieldConfigFlagSet, FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue } from '../yaii-types'
 import { Term } from './query-ir'
 import { arrayDestination, encodeUTF16toUTF8, stringSource } from 'utfx'
-
-import * as assert from 'assert'
 
 export type ExtFieldsIndexConfig = Record<FieldName, ExtFieldConfig>
 
@@ -27,10 +19,7 @@ export type ExtIndexConfig = {
 
 export type DocId = number // actually a 32-bit integer
 
-export function removeAll<T>(
-    originalSet: Set<T>,
-    toBeRemovedSet: Set<T>
-): void {
+export function removeAll<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void {
     ;[...toBeRemovedSet].forEach(function(v) {
         originalSet.delete(v)
     })
@@ -39,18 +28,12 @@ export function removeAll<T>(
 export type ICompareFunction<T> = (a: T, b: T) => number
 export type IEqualFunction<T> = (a: T, b: T) => boolean
 
-export function reverseCompareFunction<T>(
-    f: ICompareFunction<T>
-): ICompareFunction<T> {
+export function reverseCompareFunction<T>(f: ICompareFunction<T>): ICompareFunction<T> {
     return (a: T, b: T) => -f(a, b)
 }
 
-export function flattenObject(
-    ob: Record<string, unknown>
-): Record<string, FieldValues> {
-    const toReturn: Record<string, FieldValues> = {}
-
-    assert.ok(typeof ob === 'object' && !Array.isArray(ob))
+export function flattenObject(ob: Record<string, unknown>): Record<FieldName, FieldValue | FieldValues | FieldStorableValue> {
+    const toReturn: Record<FieldName, FieldValue | FieldValues | FieldStorableValue> = {}
 
     for (const i in ob) {
         if (!ob.hasOwnProperty(i)) continue
@@ -61,27 +44,44 @@ export function flattenObject(
                 if (obElement.every(isFieldValue)) {
                     toReturn[i] = obElement
                 } else {
-                    const flattenedChilds: Record<
-                        string,
-                        FieldValues
-                    >[] = obElement.map(flattenObject)
+                    const flattenedChilds = obElement.map(flattenObject)
                     for (const child of flattenedChilds) {
                         for (const x in child) {
                             if (!child.hasOwnProperty(x)) continue
+
                             const key = `${i}.${x}`
-                            const array: FieldValues = toReturn[key]
-                            if (array) {
-                                toReturn[key] = array.concat(child[x])
-                            } else {
-                                toReturn[key] = child[x]
+                            const existing: FieldValue | FieldValues | FieldStorableValue = toReturn[key]
+                            const childElement: FieldValue | FieldValues | FieldStorableValue = child[x]
+
+                            if (existing) {
+                                if (Array.isArray(existing)) {
+                                    if (Array.isArray(childElement)) {
+                                        toReturn[key] = existing.concat(childElement)
+                                    } else if (Buffer.isBuffer(childElement)) {
+                                        throw new Error('Document contains multiple Buffer for a given path.  This is not supported')
+                                    } else if (childElement !== null && childElement !== undefined) {
+                                        existing.push(childElement)
+                                    }
+                                } else if (Buffer.isBuffer(existing)) {
+                                    throw new Error('Document contains multiple Buffer + values for a given path.  This is not supported')
+                                } else if (childElement != null && childElement != undefined) {
+                                    if (Array.isArray(childElement)) {
+                                        childElement.unshift(existing)
+                                        toReturn[key] = childElement
+                                    } else if (Buffer.isBuffer(childElement)) {
+                                        throw new Error('Document contains multiple Buffer + values for a given path.  This is not supported')
+                                    } else if (childElement !== null && childElement !== undefined) {
+                                        toReturn[key] = [existing, childElement]
+                                    }
+                                }
+                            } else if (childElement != null && childElement != undefined) {
+                                toReturn[key] = childElement
                             }
                         }
                     }
                 }
             } else if (obElement !== null) {
-                const flatObject = flattenObject(
-                    obElement as Record<string, unknown>
-                )
+                const flatObject = flattenObject(obElement as Record<string, unknown>)
                 for (const x in flatObject) {
                     if (!flatObject.hasOwnProperty(x)) continue
 
@@ -89,17 +89,14 @@ export function flattenObject(
                 }
             }
         } else if (isFieldValue(obElement)) {
-            toReturn[i] = [obElement]
+            toReturn[i] = obElement
         }
     }
 
     return toReturn
 }
 
-export function opinionatedCompare(
-    a: FieldValue | undefined | Buffer,
-    b: FieldValue | undefined | Buffer
-): number {
+export function opinionatedCompare(a: FieldValue | undefined | Buffer, b: FieldValue | undefined | Buffer): number {
     switch (typeof a) {
         case 'undefined':
             switch (typeof b) {
@@ -113,7 +110,7 @@ export function opinionatedCompare(
                 case 'undefined':
                     return 1
                 case 'boolean':
-                    return a ? (b ? 0 : -1) : b ? 1 : 0
+                    return a ? b ? 0 : -1 : b ? 1 : 0
                 default:
                     return -1
             }

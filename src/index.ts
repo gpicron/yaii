@@ -13,22 +13,16 @@ import {
     Query,
     ResultItem,
     SortClause,
-    SortDirection
+    SortDirection, ValueGenerator
 } from './yaii-types'
-import { as, AsyncIterableX, from, toArray } from 'ix/asynciterable'
+import {as, AsyncIterableX, from} from 'ix/asynciterable'
 import * as op from 'ix/asynciterable/operators'
 
-import { RoaringBitmap32 } from 'roaring'
+import {RoaringBitmap32} from 'roaring'
+import {buildExpression, INTERNAL_FIELDS, numberToTerms, stringToTerm, TERM_FALSE, TERM_TRUE} from './lib/query-ir'
+import {IndexSegment} from './lib/index-segment'
 import {
-    buildExpression,
-    INTERNAL_FIELDS,
-    numberToTerms,
-    stringToTerm,
-    TERM_FALSE,
-    TERM_TRUE
-} from './lib/query-ir'
-import { IndexSegment } from './lib/index-segment'
-import {
+    DocId,
     ExtFieldConfig,
     ExtFieldsIndexConfig,
     ExtIndexConfig,
@@ -38,9 +32,10 @@ import {
     reverseCompareFunction,
     Termizer
 } from './lib/utils'
-import { BitmapAsyncIterable, cloneIfNotReusable } from './lib/bitmap'
-import { Heap } from 'typescript-collections'
-import { isAsyncIterable, isIterable, isPromise } from 'ix/util/isiterable'
+import {BitmapAsyncIterable, cloneIfNotReusable} from './lib/bitmap'
+import {Heap} from 'typescript-collections'
+import {isAsyncIterable, isIterable, isPromise} from 'ix/util/isiterable'
+import * as util from "util"
 
 const NULL_TOKENIZER: Termizer = () => {
     throw new Error('Bug, should never be called')
@@ -64,7 +59,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
     private segment: IndexSegment
     private deleted = new RoaringBitmap32()
     private indexConfig: ExtIndexConfig
-    private fieldGenerators = new Array<DocPipelineMapFunction>()
+    private fieldGenerators = new Array<{field: FieldName, valueGenerator: ValueGenerator}>()
     private allFieldGenerator?: IndexableDocPipelineMapFunction
 
     constructor(
@@ -81,12 +76,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
         for (const [field, fConf] of Object.entries(fieldsConfig)) {
             fields[field] = this.extractFieldConfig(fConf)
             if (fConf.generator) {
-                const valueGenerator = fConf.generator
-                this.fieldGenerators.push(async (input: Doc) => {
-                    input[field] = await toArray(as(valueGenerator(input)))
-
-                    return input
-                })
+                this.fieldGenerators.push({field: field, valueGenerator: fConf.generator})
             }
         }
 
@@ -127,7 +117,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
                 for (const [field, value] of Object.entries(input)) {
                     if (value && !Buffer.isBuffer(value)) {
                         const fc = fields[field]
-                        if ((fc && fc.all) || (!fc && defaultToAll)) {
+                        if (fc && fc.all || !fc && defaultToAll) {
                             if (Array.isArray(value)) {
                                 value.forEach(v => allValues.push(v))
                             } else {
@@ -213,23 +203,42 @@ export class MemoryInvertedIndex implements InvertedIndex {
             input = as([doc])
         }
 
-        for (const m of this.fieldGenerators) {
-            input = input.pipe(op.map(m, this))
-        }
-
         let indexables: AsyncIterableX<IndexableDoc>
 
         if (this.indexConfig.storeSourceDoc) {
             indexables = input.pipe(
                 op.map((source: Doc) => {
-                    const indexableDoc: IndexableDoc = flattenObject(source)
-                    indexableDoc[INTERNAL_FIELDS.SOURCE] = source
+                    try {
+                        const indexableDoc: IndexableDoc = flattenObject(source)
 
-                    return indexableDoc
+                        for (const generator of this.fieldGenerators) {
+                            indexableDoc[generator.field] = generator.valueGenerator(source)
+                        }
+
+                        indexableDoc[INTERNAL_FIELDS.SOURCE] = source
+
+                        return indexableDoc
+                    } catch (e) {
+                        console.error("failed to convert doc to indexable doc", util.inspect(source, false, null, true))
+                        return {}
+                    }
                 })
             )
         } else {
-            indexables = input.pipe(op.map(flattenObject))
+            indexables = input.pipe(op.map((source: Doc) => {
+                try {
+                    const indexableDoc: IndexableDoc = flattenObject(source)
+
+                    for (const generator of this.fieldGenerators) {
+                        indexableDoc[generator.field] = generator.valueGenerator(source)
+                    }
+
+                    return indexableDoc
+                } catch (e) {
+                    console.error("failed to convert doc to indexable doc", util.inspect(source, false, null, true))
+                    return {}
+                }
+            }))
         }
 
         if (this.allFieldGenerator) {
@@ -239,12 +248,12 @@ export class MemoryInvertedIndex implements InvertedIndex {
         return this.segment.add(indexables)
     }
 
-    query(
-        query: Query,
-        projection?: Array<FieldName>,
-        limit: number = 1000,
-        sort?: Array<SortClause>
-    ): AsyncIterableX<ResultItem> {
+    query<T extends Doc>(
+        filter: Query,
+        sort?: Array<SortClause>,
+        limit?: number,
+        projection?: Array<FieldName>
+    ): AsyncIterableX<ResultItem<T>> {
         const actualProjection =
             projection == undefined
                 ? this.indexConfig.storeSourceDoc
@@ -257,11 +266,14 @@ export class MemoryInvertedIndex implements InvertedIndex {
         const segment = this.segment
         const deleted = this.deleted
 
-        let sortComparator: ICompareFunction<ResultItem> | undefined
+        let sortComparator: ICompareFunction<ResultItem<Doc>> | undefined
         let sortProjection: Array<FieldName> | undefined
+        let optimizedSortComparators: Map<FieldName, ICompareFunction<DocId> | undefined> | undefined
 
         if (sort) {
-            sortProjection = new Array<FieldName>()
+            sortProjection = []
+            optimizedSortComparators = new Map()
+
             for (const clause of sort) {
                 let field: FieldName
                 let dir: SortDirection
@@ -278,27 +290,37 @@ export class MemoryInvertedIndex implements InvertedIndex {
                 if (
                     !config ||
                     !(
-                        config.flags & FieldConfigFlag.STORED ||
-                        !this.indexConfig.storeSourceDoc
+                        config.flags & FieldConfigFlag.STORED || config.flags & FieldConfigFlag.SORT_OPTIMIZED
                     )
-                )
+                ) {
                     throw new Error(
-                        `Sorting not supported for field that is not stored: ${field}`
+                        `Sorting not supported for field that is not STORED or Sort_OPTIMIZED : ${field}`
                     )
+                }
 
-                sortProjection.push(field)
+                let fieldComparator: ICompareFunction<ResultItem<Doc>>
 
-                let fieldComparator: ICompareFunction<ResultItem> = (a, b) => {
-                    const aElement = a[field]
-                    const aVal = Array.isArray(aElement)
-                        ? aElement[0]
-                        : (aElement as FieldValue | undefined | Buffer)
-                    const bElement = b[field]
-                    const bVal = Array.isArray(bElement)
-                        ? bElement[0]
-                        : (bElement as FieldValue | undefined | Buffer)
+                if (config.flags & FieldConfigFlag.STORED) {
+                    sortProjection.push(field)
 
-                    return opinionatedCompare(aVal, bVal)
+                    fieldComparator = (a, b) => {
+                        const aElement = a[field]
+                        const aVal = Array.isArray(aElement)
+                            ? aElement[0]
+                            : (aElement as FieldValue | undefined | Buffer)
+                        const bElement = b[field]
+                        const bVal = Array.isArray(bElement)
+                            ? bElement[0]
+                            : (bElement as FieldValue | undefined | Buffer)
+
+                        return opinionatedCompare(aVal, bVal)
+                    }
+                } else {
+                    optimizedSortComparators.set(field, undefined)
+                    fieldComparator = (a, b) => {
+                        const comp = optimizedSortComparators?.get(field) as ICompareFunction<DocId>
+                        return comp(a._id, b._id)
+                    }
                 }
 
                 if (dir == SortDirection.DESCENDING) {
@@ -325,7 +347,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
         }
 
         const resolveAndProjectSegment = async function*() {
-            let exp = await buildExpression(query)
+            let exp = await buildExpression(filter)
 
             const segmentLast = segment.next
 
@@ -344,12 +366,21 @@ export class MemoryInvertedIndex implements InvertedIndex {
                 )
             }
 
-            if (sortComparator && sortProjection) {
-                const heap = new Heap<ResultItem>(
+            if (sortComparator && sortProjection && optimizedSortComparators) {
+                limit = limit || 1000
+                if (optimizedSortComparators.size > 0) {
+                    for (const fieldName of optimizedSortComparators.keys()) {
+                        optimizedSortComparators.set(fieldName, segment.getOptimizedComparator(fieldName))
+                    }
+                }
+
+                const heap = new Heap<ResultItem<Doc>>(
                     reverseCompareFunction(sortComparator)
                 )
 
-                for await (const d of segment.project(docIds, sortProjection)) {
+                const docs = segment.project<Doc>(docIds, sortProjection)
+
+                for await (const d of docs) {
                     heap.add(d)
                     if (heap.size() > limit) {
                         heap.removeRoot()
@@ -367,7 +398,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
                 docIds = as(result)
             }
 
-            let decount = limit
+            let decount = limit || Number.MAX_SAFE_INTEGER
 
             for await (const doc of segment.project(docIds, actualProjection)) {
                 yield doc

@@ -1,4 +1,4 @@
-import { AsyncIterableX as AsyncIterable } from 'ix/asynciterable'
+import {AsyncIterableX, AsyncIterableX as AsyncIterable} from 'ix/asynciterable'
 import { Query } from './lib/query'
 import { standardTokenizer } from './lib/analyzer/standard-tokenizer'
 import { stopwordFilter } from './lib/analyzer/stopwords-filter'
@@ -9,12 +9,7 @@ export * from './lib/query'
 export interface InvertedIndex {
     add(input: Doc | AsyncIterable<Doc>): Promise<number>
 
-    query(
-        filter: Query,
-        projection?: Array<FieldName>,
-        limit?: number,
-        sort?: Array<SortClause>
-    ): AsyncIterable<ResultItem>
+    query<T extends Doc>(filter: Query, sort?: Array<SortClause>, limit?: number, projection?: Array<FieldName>): AsyncIterableX<ResultItem<T>>
 
     listAllKnownField(): Record<string, FieldConfig>
 }
@@ -39,7 +34,7 @@ export enum FieldConfigFlag {
 }
 
 export type Analyzer = (input: FieldValue) => Array<FieldValue>
-export type ValueGenerator = (input: Doc) => Array<FieldValue>
+export type ValueGenerator = (input: Doc) => (FieldValue | FieldValues | FieldStorableValue)
 
 export type IndexConfig = {
     defaultFieldConfig: FieldConfig
@@ -100,9 +95,9 @@ interface StoredFields {
         | undefined
 }
 
-export interface ResultItem extends StoredFields {
+export interface ResultItem<T extends Doc> extends StoredFields {
     _id: DocId
-    _source?: Doc
+    _source?: T
 }
 
 export interface Doc {
@@ -112,12 +107,14 @@ export interface Doc {
         | FieldStorableValue
         | Doc
         | Array<Doc>
+        | undefined
+        | null
 }
 
 // ----------------------------------------------
 
 export function isFieldValue(obj: unknown): obj is FieldValue {
-    return typeof obj === 'string' || typeof obj === 'number'
+    return typeof obj === 'string' || typeof obj === 'number' || typeof obj === 'boolean'
 }
 
 export function isNumericFieldValue(obj: unknown): obj is NumericFieldValue {
@@ -127,3 +124,7 @@ export function isNumericFieldValue(obj: unknown): obj is NumericFieldValue {
 export function isFieldValues(obj: unknown): obj is FieldValues {
     return Array.isArray(obj) && obj.every(isFieldValue)
 }
+
+// -------
+
+export * from './lib/query'

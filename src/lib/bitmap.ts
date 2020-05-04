@@ -1,9 +1,7 @@
 import { AsyncIterableX } from 'ix/asynciterable'
 import { RoaringBitmap32 } from 'roaring'
 
-export declare abstract class DocIdAsyncIterable extends AsyncIterableX<
-    number
-> {
+export declare abstract class DocIdAsyncIterable extends AsyncIterableX<number> {
     canUpdateInPlace: boolean
     readonly size: number
 
@@ -24,8 +22,7 @@ export declare abstract class DocIdAsyncIterable extends AsyncIterableX<
     [Symbol.asyncIterator](): AsyncIterator<number>
 }
 
-export class BitmapAsyncIterable extends AsyncIterableX<number>
-    implements DocIdAsyncIterable {
+export class BitmapAsyncIterable extends AsyncIterableX<number> implements DocIdAsyncIterable {
     private bitmap: RoaringBitmap32
     readonly canUpdateInPlace: boolean
 
@@ -35,7 +32,7 @@ export class BitmapAsyncIterable extends AsyncIterableX<number>
         this.canUpdateInPlace = canUpdateInPlace
     }
 
-    static is(x: AsyncIterableX<number>): x is BitmapAsyncIterable {
+    static is(x: AsyncIterable<number>): x is BitmapAsyncIterable {
         return x instanceof BitmapAsyncIterable
     }
 
@@ -62,21 +59,49 @@ export class BitmapAsyncIterable extends AsyncIterableX<number>
         return this
     }
 
-    andInPlace(and: BitmapAsyncIterable): this {
-        this.bitmap.andInPlace(and.bitmap)
+    andInPlace(and: DocIdAsyncIterable): this {
+        if (BitmapAsyncIterable.is(and)) {
+            this.bitmap.andInPlace(and.bitmap)
+        } else {
+            const andSingleton = and as SingletonDocIdAsyncIterable
+            if (this.bitmap.has(andSingleton.index)) {
+                this.bitmap.clear()
+                this.bitmap.add(andSingleton.index)
+            } else {
+                this.bitmap.clear()
+            }
+        }
         return this
     }
 
-    andNotInPlace(andNot: BitmapAsyncIterable): this {
-        this.bitmap.andNotInPlace(andNot.bitmap)
+    andNotInPlace(andNot: DocIdAsyncIterable): this {
+        if (BitmapAsyncIterable.is(andNot)) {
+            this.bitmap.andNotInPlace(andNot.bitmap)
+        } else {
+            const andNotSingleton = andNot as SingletonDocIdAsyncIterable
+            this.bitmap.remove(andNotSingleton.index)
+        }
         return this
     }
 
-    static orMany(opers: BitmapAsyncIterable[]) {
-        return new BitmapAsyncIterable(
-            RoaringBitmap32.orMany(opers.map(value => value.bitmap)),
-            true
-        )
+    static orMany(opers: DocIdAsyncIterable[]) {
+        let result: RoaringBitmap32 | undefined
+        const maps = opers.filter(BitmapAsyncIterable.is).map(v => v.bitmap)
+        if (maps.length > 0) {
+            result = RoaringBitmap32.orMany(maps)
+        }
+        if (maps.length < opers.length) {
+            if (!result) result = new RoaringBitmap32()
+
+            for (const s of opers) {
+                // eslint-disable-next-line
+                if (SingletonDocIdAsyncIterable.is(s)) {
+                    result.add(s.index)
+                }
+            }
+        }
+
+        return new BitmapAsyncIterable(result as RoaringBitmap32, true)
     }
 
     flipRange(from: number, to: number): this {
@@ -93,8 +118,7 @@ export class BitmapAsyncIterable extends AsyncIterableX<number>
     static EMPTY_MAP = new BitmapAsyncIterable(new RoaringBitmap32(), false)
 }
 
-export class SingletonDocIdAsyncIterable extends AsyncIterableX<number>
-    implements DocIdAsyncIterable {
+export class SingletonDocIdAsyncIterable extends AsyncIterableX<number> implements DocIdAsyncIterable {
     readonly canUpdateInPlace: boolean = false
     readonly size: number = 1
     readonly index: number
@@ -102,6 +126,10 @@ export class SingletonDocIdAsyncIterable extends AsyncIterableX<number>
     constructor(index: number) {
         super()
         this.index = index
+    }
+
+    static is(x: AsyncIterable<number>): x is SingletonDocIdAsyncIterable {
+        return x instanceof SingletonDocIdAsyncIterable
     }
 
     add(): this {
@@ -137,9 +165,7 @@ export class SingletonDocIdAsyncIterable extends AsyncIterableX<number>
     }
 }
 
-export function cloneIfNotReusable(
-    value: BitmapAsyncIterable
-): BitmapAsyncIterable {
+export function cloneIfNotReusable(value: BitmapAsyncIterable): BitmapAsyncIterable {
     if (!value.canUpdateInPlace) return value.clone()
     return value
 }

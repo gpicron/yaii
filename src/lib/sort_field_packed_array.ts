@@ -36,12 +36,7 @@ export class SortFieldPackedArray {
         this.pointers.add(this.store.offset)
     }
 
-    static compareOver(
-        bb: ByteBuffer,
-        aOffset: number,
-        bOffset: number,
-        over: number
-    ): number {
+    static compareOver(bb: ByteBuffer, aOffset: number, bOffset: number, over: number): number {
         for (let i = 0; i < over; i++) {
             const cmp = bb.readUint8(aOffset) - bb.readUint8(bOffset)
             if (cmp != 0) return cmp
@@ -73,12 +68,7 @@ export class SortFieldPackedArray {
             case 0x03:
                 aPointer++
                 bPointer++
-                return SortFieldPackedArray.compareOver(
-                    s,
-                    aPointer,
-                    bPointer,
-                    7
-                )
+                return SortFieldPackedArray.compareOver(s, aPointer, bPointer, 7)
             case 0x04:
                 const aEndPointer = this.pointers.select(a) || s.offset
                 const bEndPointer = this.pointers.select(b) || s.offset
@@ -87,12 +77,7 @@ export class SortFieldPackedArray {
                 const aLen = aEndPointer - aPointer
                 const bLen = bEndPointer - bPointer
 
-                const comp = SortFieldPackedArray.compareOver(
-                    s,
-                    aPointer,
-                    bPointer,
-                    Math.min(aLen, bLen)
-                )
+                const comp = SortFieldPackedArray.compareOver(s, aPointer, bPointer, Math.min(aLen, bLen))
                 if (comp == 0) {
                     return aLen - bLen
                 } else {

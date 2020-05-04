@@ -11,7 +11,7 @@
     "clean": "rimraf --no-glob dist",
     "lint-staged": "lint-staged",
     "ava": "ava -v test/**/test-*.ts",
-    "ava-perf-tests": "ava -v -s test/**/performance-*.ts",
+    "ava-perf-tests": "ava -T 60m -v -s test/**/performance-*.ts",
     "ava:fail-fast": "ava -v --fail-fast test/**/test-*.ts",
     "ava:serial": "ava -v -s test/**/test-*.ts",
     "watch:ava": "nodemon -e 'ts json' -x 'npm run ava || true'",
@@ -32,8 +32,7 @@
   },
   "lint-staged": {
     "*.ts": [
-      "eslint --fix",
-      "prettier --write"
+      "eslint --fix"
     ]
   },
   "pre-commit": "lint-staged",
@@ -122,9 +121,8 @@
     "bytebuffer": "^5.0.1",
     "collections": "^5.1.11",
     "ix": "^3.0.2",
+    "long": "^4.0.0",
     "moo": "^0.5.1",
-    "npm-dts": "^1.2.1",
-    "protobufjs": "^6.9.0",
     "roaring": "^1.0.6",
     "typescript-collections": "^1.3.3",
     "utfx": "^1.0.1"

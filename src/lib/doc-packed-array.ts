@@ -18,23 +18,19 @@ enum FieldTag {
 interface FieldConfig {
     id: FieldNumber
     kind: FieldTag
-    docType?: DocType
+    elementSchema?: RecordSchema
 }
 
 type FieldNumber = number
 type FieldName = string
 
-type DocType = {
+type RecordSchema = {
     fields: Map<FieldName, FieldConfig[]>
     lastId: number
-    mapConfigs?: FieldConfig[]
+    overflowFieldConfigs?: FieldConfig[]
 }
 
-function generateCodeForEncofingFieldConfig(
-    fieldConfig: FieldConfig,
-    fieldName: FieldName,
-    root: string
-) {
+function generateCodeForEncofingFieldConfig(fieldConfig: FieldConfig, fieldName: FieldName, root: string) {
     let code = ''
     switch (fieldConfig.kind) {
         case FieldTag.Boolean:
@@ -66,10 +62,7 @@ function generateCodeForEncofingFieldConfig(
             code += '  if (doc === null) {'
             code += '    store.writeVarint32(-1);'
             code += '  } else {'
-            code += generateEncoderCodeForType(
-                fieldConfig.docType as DocType,
-                `${root}.${fieldName}`
-            )
+            code += generateEncoderCodeForSchema(fieldConfig.elementSchema as RecordSchema, `${root}.${fieldName}`)
             code += '  }'
             code += '}'
             break
@@ -79,10 +72,7 @@ function generateCodeForEncofingFieldConfig(
             code += '  if (doc === null) {'
             code += '    store.writeVarint32(-1);'
             code += '  } else {'
-            code += generateEncoderCodeForType(
-                fieldConfig.docType as DocType,
-                `${root}.${fieldName}`
-            )
+            code += generateEncoderCodeForSchema(fieldConfig.elementSchema as RecordSchema, `${root}.${fieldName}`)
             code += '  }'
             code += '}'
             break
@@ -110,10 +100,7 @@ function generateCodeForEncofingFieldConfig(
             code += '          if (doc === null) {'
             code += '            store.writeVarint32(-1);'
             code += '          } else {'
-            code += generateEncoderCodeForType(
-                fieldConfig.docType as DocType,
-                `${root}.${fieldName}`
-            )
+            code += generateEncoderCodeForSchema(fieldConfig.elementSchema as RecordSchema, `${root}.${fieldName}`)
             code += '          }'
             code += '        }'
             code += '      }'
@@ -130,51 +117,30 @@ function generateCodeForEncofingFieldConfig(
     return code
 }
 
-function generateEncoderForPrimitiveArrays(
-    primitiveArrayFieldConfigs: FieldConfig[],
-    writeFieldName: boolean,
-    fieldName: FieldName,
-    root: string
-) {
+function generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs: FieldConfig[], writeFieldName: boolean, fieldName: FieldName, root: string) {
     let code = ''
     if (primitiveArrayFieldConfigs.length == 1) {
         code += `store.writeVarint32(${primitiveArrayFieldConfigs[0].id});`
         if (writeFieldName) code += `store.writeVString(field);`
-        code += generateCodeForEncofingFieldConfig(
-            primitiveArrayFieldConfigs[0],
-            fieldName,
-            root
-        )
+        code += generateCodeForEncofingFieldConfig(primitiveArrayFieldConfigs[0], fieldName, root)
     } else {
         code += 'if (data.length == 0) {'
         code += `store.writeVarint32(${primitiveArrayFieldConfigs[0].id});`
         if (writeFieldName) code += `store.writeVString(field);`
-        code += generateCodeForEncofingFieldConfig(
-            primitiveArrayFieldConfigs[0],
-            fieldName,
-            root
-        )
+        code += generateCodeForEncofingFieldConfig(primitiveArrayFieldConfigs[0], fieldName, root)
         for (const pfc of primitiveArrayFieldConfigs) {
             switch (pfc.kind) {
                 case FieldTag.NumericArray:
                     code += '} else if (typeof data[0] === "numeric") {'
                     code += `store.writeVarint32(${pfc.id});`
                     if (writeFieldName) code += `store.writeVString(field);`
-                    code += generateCodeForEncofingFieldConfig(
-                        pfc,
-                        fieldName,
-                        root
-                    )
+                    code += generateCodeForEncofingFieldConfig(pfc, fieldName, root)
                     break
                 case FieldTag.StringArray:
                     code += '} else if (typeof data[0] === "string") {'
                     code += `store.writeVarint32(${pfc.id});`
                     if (writeFieldName) code += `store.writeVString(field);`
-                    code += generateCodeForEncofingFieldConfig(
-                        pfc,
-                        fieldName,
-                        root
-                    )
+                    code += generateCodeForEncofingFieldConfig(pfc, fieldName, root)
                     break
             }
         }
@@ -183,52 +149,24 @@ function generateEncoderForPrimitiveArrays(
     return code
 }
 
-function generateEncoderCodeForRecordArray(
-    arrayChildFieldConfig: FieldConfig,
-    writeFieldName: boolean,
-    fieldName: FieldName,
-    root: string
-) {
+function generateEncoderCodeForRecordArray(arrayChildFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string) {
     let code = `store.writeVarint32(${arrayChildFieldConfig.id});`
     if (writeFieldName) code += `store.writeVString(field);`
-    code += generateCodeForEncofingFieldConfig(
-        arrayChildFieldConfig,
-        fieldName,
-        root
-    )
+    code += generateCodeForEncofingFieldConfig(arrayChildFieldConfig, fieldName, root)
     return code
 }
 
-function generateEncoderCodeForChildRecord(
-    childFieldConfig: FieldConfig,
-    writeFieldName: boolean,
-    fieldName: FieldName,
-    root: string
-) {
+function generateEncoderCodeForChildRecord(childFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string) {
     let code = `store.writeVarint32(${childFieldConfig.id});`
     if (writeFieldName) code += `store.writeVString(field);`
-    code += generateCodeForEncofingFieldConfig(
-        childFieldConfig,
-        fieldName,
-        root
-    )
+    code += generateCodeForEncofingFieldConfig(childFieldConfig, fieldName, root)
     return code
 }
 
-function generateCodeForEncondingMultiTypeField(
-    fieldConfigs: FieldConfig[],
-    fieldName: FieldName,
-    root: string,
-    writeFieldName: boolean = false
-) {
+function generateCodeForEncondingMultiTypeField(fieldConfigs: FieldConfig[], fieldName: FieldName, root: string, writeFieldName: boolean = false) {
     let code = 'switch (typeof data) {'
 
-    const primitiveFieldConfigs = fieldConfigs.filter(
-        f =>
-            f.kind == FieldTag.Boolean ||
-            f.kind == FieldTag.String ||
-            f.kind == FieldTag.Numeric
-    )
+    const primitiveFieldConfigs = fieldConfigs.filter(f => f.kind == FieldTag.Boolean || f.kind == FieldTag.String || f.kind == FieldTag.Numeric)
 
     for (const fieldConfig of primitiveFieldConfigs) {
         switch (fieldConfig.kind) {
@@ -249,29 +187,16 @@ function generateCodeForEncondingMultiTypeField(
     }
 
     const childFieldConfig = fieldConfigs.find(f => f.kind == FieldTag.Child)
-    const arrayChildFieldConfig = fieldConfigs.find(
-        f => f.kind == FieldTag.ChildArray
-    )
-    const primitiveArrayFieldConfigs = fieldConfigs.filter(
-        f => f.kind == FieldTag.StringArray || f.kind == FieldTag.NumericArray
-    )
+    const arrayChildFieldConfig = fieldConfigs.find(f => f.kind == FieldTag.ChildArray)
+    const primitiveArrayFieldConfigs = fieldConfigs.filter(f => f.kind == FieldTag.StringArray || f.kind == FieldTag.NumericArray)
 
-    const mixedArrayFieldConfig: FieldConfig | undefined = fieldConfigs.find(
-        f => f.kind == FieldTag.MixedArray
-    )
-    const bufferFieldConfigs = fieldConfigs.filter(
-        f => f.kind == FieldTag.BufferValue
-    )
+    const mixedArrayFieldConfig: FieldConfig | undefined = fieldConfigs.find(f => f.kind == FieldTag.MixedArray)
+    const bufferFieldConfigs = fieldConfigs.filter(f => f.kind == FieldTag.BufferValue)
     if (bufferFieldConfigs.length > 0) throw new Error('Not yet implemented')
 
     const hasPrimitiveArrayConfig = primitiveArrayFieldConfigs.length > 0
 
-    if (
-        childFieldConfig ||
-        hasPrimitiveArrayConfig ||
-        arrayChildFieldConfig ||
-        mixedArrayFieldConfig
-    ) {
+    if (childFieldConfig || hasPrimitiveArrayConfig || arrayChildFieldConfig || mixedArrayFieldConfig) {
         code += "case 'object': {"
 
         code += 'if (Array.isArray(data)) {'
@@ -279,51 +204,25 @@ function generateCodeForEncondingMultiTypeField(
         if (mixedArrayFieldConfig) {
             code += `store.writeVarint32(${mixedArrayFieldConfig.id});`
             if (writeFieldName) code += `store.writeVString(field);`
-            code += generateCodeForEncofingFieldConfig(
-                mixedArrayFieldConfig,
-                fieldName,
-                root
-            )
+            code += generateCodeForEncofingFieldConfig(mixedArrayFieldConfig, fieldName, root)
         } else {
             code += '  if (data.length === 0) {'
             if (hasPrimitiveArrayConfig) {
-                code += generateEncoderForPrimitiveArrays(
-                    primitiveArrayFieldConfigs,
-                    writeFieldName,
-                    fieldName,
-                    root
-                )
+                code += generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs, writeFieldName, fieldName, root)
             } else if (arrayChildFieldConfig) {
-                code += generateEncoderCodeForRecordArray(
-                    arrayChildFieldConfig,
-                    writeFieldName,
-                    fieldName,
-                    root
-                )
+                code += generateEncoderCodeForRecordArray(arrayChildFieldConfig, writeFieldName, fieldName, root)
             } else {
                 code += "throw new Error('array types not yet supported')"
             }
-            code +=
-                "  } else if (typeof data[0] === 'number' || typeof data[0] === 'string') {"
+            code += "  } else if (typeof data[0] === 'number' || typeof data[0] === 'string') {"
             if (hasPrimitiveArrayConfig) {
-                code += generateEncoderForPrimitiveArrays(
-                    primitiveArrayFieldConfigs,
-                    writeFieldName,
-                    fieldName,
-                    root
-                )
+                code += generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs, writeFieldName, fieldName, root)
             } else {
-                code +=
-                    "throw new Error('primitive array type not yet supported')"
+                code += "throw new Error('primitive array type not yet supported')"
             }
             code += "  } else if (typeof data[0] === 'object') {"
             if (arrayChildFieldConfig) {
-                code += generateEncoderCodeForRecordArray(
-                    arrayChildFieldConfig,
-                    writeFieldName,
-                    fieldName,
-                    root
-                )
+                code += generateEncoderCodeForRecordArray(arrayChildFieldConfig, writeFieldName, fieldName, root)
             } else {
                 code += "throw new Error('record array type not yet supported')"
             }
@@ -333,12 +232,7 @@ function generateCodeForEncondingMultiTypeField(
         }
         code += "} else if (typeof data === 'object') {"
         if (childFieldConfig) {
-            code += generateEncoderCodeForChildRecord(
-                childFieldConfig,
-                writeFieldName,
-                fieldName,
-                root
-            )
+            code += generateEncoderCodeForChildRecord(childFieldConfig, writeFieldName, fieldName, root)
         } else {
             code += "throw new Error('child record type not yet supported')"
         }
@@ -355,7 +249,7 @@ function generateCodeForEncondingMultiTypeField(
     return code
 }
 
-function generateEncoderCodeForType(type: DocType, root = '') {
+function generateEncoderCodeForSchema(type: RecordSchema, root = '') {
     let code = `for (const [field, data] of Object.entries(doc)) {`
 
     code += ' switch (field) {'
@@ -365,41 +259,24 @@ function generateEncoderCodeForType(type: DocType, root = '') {
         if (fieldConfigs.length == 1) {
             const fieldConfig = fieldConfigs[0]
             code += `store.writeVarint32(${fieldConfig.id});`
-            code += generateCodeForEncofingFieldConfig(
-                fieldConfig,
-                fieldName,
-                root
-            )
+            code += generateCodeForEncofingFieldConfig(fieldConfig, fieldName, root)
         } else {
-            code += generateCodeForEncondingMultiTypeField(
-                fieldConfigs,
-                fieldName,
-                root
-            )
+            code += generateCodeForEncondingMultiTypeField(fieldConfigs, fieldName, root)
         }
 
         code += ' break; } '
     }
-    if (type.mapConfigs) {
+    if (type.overflowFieldConfigs) {
         code += ' default:'
-        const fieldConfigs = type.mapConfigs
+        const fieldConfigs = type.overflowFieldConfigs
 
         if (fieldConfigs.length == 1) {
             const fieldConfig = fieldConfigs[0]
             code += `store.writeVarint32(${fieldConfig.id});`
             code += `store.writeVString(field);`
-            code += generateCodeForEncofingFieldConfig(
-                fieldConfig,
-                '£_mapped',
-                root
-            )
+            code += generateCodeForEncofingFieldConfig(fieldConfig, '£_mapped', root)
         } else {
-            code += generateCodeForEncondingMultiTypeField(
-                fieldConfigs,
-                '£_mapped',
-                root,
-                true
-            )
+            code += generateCodeForEncondingMultiTypeField(fieldConfigs, '£_mapped', root, true)
         }
     } else {
         code += `  default: throw new Error('failure with field ${root}.' + field)`
@@ -412,16 +289,12 @@ function generateEncoderCodeForType(type: DocType, root = '') {
     return code
 }
 
-function generateCodeForDecodingField(
-    fieldConfig: FieldConfig,
-    fieldName: string | null
-) {
+function generateCodeForDecodingField(fieldConfig: FieldConfig, fieldName: string | null) {
     let code = `case ${fieldConfig.id}: {`
 
     let fieldIndex
     if (fieldName === null) {
-        code +=
-            'const nextFieldIndex = store.readVString(pointer); pointer+=nextFieldIndex.length;'
+        code += 'const nextFieldIndex = store.readVString(pointer); pointer+=nextFieldIndex.length;'
         code += `const fieldIndex = nextFieldIndex.string;`
         fieldIndex = `fieldIndex`
     } else {
@@ -438,8 +311,7 @@ function generateCodeForDecodingField(
             code += `result[${fieldIndex}] = nextRead;`
             break
         case FieldTag.NumericArray:
-            code +=
-                'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
+            code += 'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
             code += 'const len = lenRead.value;'
             code += 'const array = [];'
             code += 'for (let i = 0; i < len; i++) {'
@@ -449,35 +321,31 @@ function generateCodeForDecodingField(
             code += `result[${fieldIndex}] = array;`
             break
         case FieldTag.String:
-            code +=
-                'const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
+            code += 'const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
             code += `result[${fieldIndex}] = nextRead.string;`
             break
         case FieldTag.StringArray:
-            code +=
-                'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
+            code += 'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
             code += 'const len = lenRead.value;'
             code += 'const array = [];'
             code += 'for (let i = 0; i < len; i++) {'
-            code +=
-                'const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
+            code += 'const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
             code += 'array[i]=nextRead.string;'
             code += '}'
             code += `result[${fieldIndex}] = array;`
             break
         case FieldTag.Child:
             code += 'const parent = result; {'
-            code += generateDecoderCodeForType(fieldConfig.docType as DocType)
+            code += generateDecoderCodeForType(fieldConfig.elementSchema as RecordSchema)
             code += `parent[${fieldIndex}] = result; }`
             break
         case FieldTag.ChildArray:
             code += 'const parent = result; {'
-            code +=
-                'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
+            code += 'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
             code += 'const len = lenRead.value;'
             code += 'const array = [];'
             code += 'for (let i = 0; i < len; i++) {'
-            code += generateDecoderCodeForType(fieldConfig.docType as DocType)
+            code += generateDecoderCodeForType(fieldConfig.elementSchema as RecordSchema)
             code += 'array[i]=result;'
             code += '}'
             code += `parent[${fieldIndex}] = array; }`
@@ -485,32 +353,28 @@ function generateCodeForDecodingField(
         case FieldTag.MixedArray:
             code += 'function decodeMixedArray() {'
 
-            code +=
-                'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
+            code += 'const lenRead = store.readVarint32(pointer); pointer+=lenRead.length;'
             code += 'const len = lenRead.value;'
             code += 'const array = [];'
 
             code += 'for (let i = 0; i < len; i++) {'
 
-            code +=
-                '  const elTypeRead = store.readVarint32(pointer); pointer+=elTypeRead.length;'
+            code += '  const elTypeRead = store.readVarint32(pointer); pointer+=elTypeRead.length;'
             code += '  const elType = elTypeRead.value;'
             code += '  switch (elType) {'
             code += `    case (${FieldTag.Numeric}): {`
-            code +=
-                '      const nextRead = store.readDouble(pointer); pointer+=8;'
+            code += '      const nextRead = store.readDouble(pointer); pointer+=8;'
             code += '      array[i] = nextRead;'
             code += '      break;'
             code += '    }'
             code += `    case (${FieldTag.String}): {`
-            code +=
-                '      const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
+            code += '      const nextRead = store.readVString(pointer); pointer+=nextRead.length;'
             code += '      array[i] = nextRead.string;'
             code += '      break;'
             code += '    }'
             code += `    case (${FieldTag.Child}): {`
             code += '      const parent = array; {'
-            code += generateDecoderCodeForType(fieldConfig.docType as DocType)
+            code += generateDecoderCodeForType(fieldConfig.elementSchema as RecordSchema)
 
             code += `      parent[i] = result; `
             code += '      }'
@@ -533,12 +397,12 @@ function generateCodeForDecodingField(
     return code
 }
 
-function generateDecoderCodeForType(type: DocType) {
+function generateDecoderCodeForType(type: RecordSchema) {
     let code = ''
     code += `let result = {};`
     code += `const nextRead = store.readVarint32(pointer); pointer+=nextRead.length; let fieldId=nextRead.value; `
     code += 'if (fieldId === -1) {'
-    code += '   result == null'
+    code += '   result = null'
     code += '} else {'
 
     code += `while (fieldId !== 0x00) {`
@@ -548,8 +412,8 @@ function generateDecoderCodeForType(type: DocType) {
         for (const fieldConfig of fieldConfigs) {
             code += generateCodeForDecodingField(fieldConfig, fieldName)
         }
-        if (type.mapConfigs) {
-            for (const fieldConfig of type.mapConfigs) {
+        if (type.overflowFieldConfigs) {
+            for (const fieldConfig of type.overflowFieldConfigs) {
                 code += generateCodeForDecodingField(fieldConfig, null)
             }
         }
@@ -567,15 +431,12 @@ type GeneratedEncoder = {
     code: string
 }
 
-function generateEncoder(type: DocType): GeneratedEncoder {
-    const code = generateEncoderCodeForType(type)
+function generateEncoder(type: RecordSchema): GeneratedEncoder {
+    const code = generateEncoderCodeForSchema(type)
 
     try {
         return {
-            function: new Function('doc', 'store', code) as (
-                doc: Doc,
-                store: ByteBuffer
-            ) => void,
+            function: new Function('doc', 'store', code) as (doc: Doc, store: ByteBuffer) => void,
             code: code
         }
     } catch (e) {
@@ -589,16 +450,13 @@ type GeneratedDecoder = {
     code: string
 }
 
-function generateDecoder(type: DocType): GeneratedDecoder {
+function generateDecoder(type: RecordSchema): GeneratedDecoder {
     let code = generateDecoderCodeForType(type)
     code += 'return result;'
 
     try {
         return {
-            function: new Function('pointer', 'store', code) as (
-                pointer: number,
-                store: ByteBuffer
-            ) => Doc,
+            function: new Function('pointer', 'store', code) as (pointer: number, store: ByteBuffer) => Doc,
             code: code
         }
     } catch (e) {
@@ -607,109 +465,94 @@ function generateDecoder(type: DocType): GeneratedDecoder {
     }
 }
 
-function upgradeSchema(
-    doc: object,
-    current: DocType,
-    targetMaxFieldTagsPerLevel: number
-) {
+function upgradeSchema(doc: object, current: RecordSchema, targetMaxFieldTagsPerLevel: number) {
     if (!doc) {
         throw new Error()
     }
     for (const [field, data] of Object.entries(doc)) {
         let fieldConfigs = current.fields.get(field)
 
-        if (!fieldConfigs && current.mapConfigs) {
-            fieldConfigs = current.mapConfigs
+        if (!fieldConfigs && current.overflowFieldConfigs) {
+            fieldConfigs = current.overflowFieldConfigs
         }
 
         let fieldConfig
         let neededKind
-        let typesInArray
 
         switch (typeof data) {
             case 'boolean':
                 neededKind = FieldTag.Boolean
-                fieldConfig = fieldConfigs?.find(
-                    fc => fc.kind == FieldTag.Boolean
-                )
+                fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.Boolean)
                 break
             case 'number':
                 neededKind = FieldTag.Numeric
-                fieldConfig = fieldConfigs?.find(
-                    fc => fc.kind == FieldTag.Numeric
-                )
+                fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.Numeric)
                 break
             case 'string':
                 neededKind = FieldTag.String
-                fieldConfig = fieldConfigs?.find(
-                    fc => fc.kind == FieldTag.String
-                )
+                fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.String)
                 break
             case 'object':
                 if (Array.isArray(data)) {
-                    typesInArray = data.reduce((acc, el) => {
-                        acc.set(typeof el, true)
-                        return acc
-                    }, new Map<string, boolean>())
-                    if (typesInArray.size === 0) {
-                        fieldConfig = fieldConfigs?.find(
-                            fc =>
-                                fc.kind == FieldTag.NumericArray ||
-                                fc.kind == FieldTag.StringArray ||
-                                fc.kind == FieldTag.ChildArray ||
-                                fc.kind == FieldTag.MixedArray
-                        )
-                        if (fieldConfig) {
-                            neededKind = fieldConfig.kind
-                        } else {
-                            neededKind = FieldTag.StringArray
-                        }
-                    } else if (typesInArray.size === 1) {
-                        switch (typesInArray.keys().next().value) {
-                            case 'number':
-                                neededKind = FieldTag.NumericArray
-                                fieldConfig = fieldConfigs?.find(
-                                    fc => fc.kind == FieldTag.NumericArray
-                                )
-                                break
-                            case 'string':
-                                neededKind = FieldTag.StringArray
-                                fieldConfig = fieldConfigs?.find(
-                                    fc => fc.kind == FieldTag.StringArray
-                                )
-                                break
-                            case 'object':
-                                neededKind = FieldTag.ChildArray
-                                fieldConfig = fieldConfigs?.find(
-                                    fc => fc.kind == FieldTag.ChildArray
-                                )
-                                break
-                            default:
-                                throw new Error('not yet implemented')
-                        }
-                    } else {
+                    // once an array with mixed was needed, all future encode must be done with mixed format
+                    const mixedArrayConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.MixedArray)
+
+                    if (mixedArrayConfig) {
                         neededKind = FieldTag.MixedArray
-                        fieldConfig = fieldConfigs?.find(
-                            fc => fc.kind == FieldTag.MixedArray
-                        )
+                        fieldConfig = mixedArrayConfig
+                    } else {
+                        const typesInArray = data.reduce((acc, el) => {
+                            acc.set(typeof el, true)
+                            return acc
+                        }, new Map<string, boolean>())
+
+                        if (typesInArray.size === 0) {
+                            fieldConfig = fieldConfigs?.find(
+                                fc =>
+                                    fc.kind == FieldTag.NumericArray ||
+                                    fc.kind == FieldTag.StringArray ||
+                                    fc.kind == FieldTag.ChildArray ||
+                                    fc.kind == FieldTag.MixedArray
+                            )
+                            if (fieldConfig) {
+                                neededKind = fieldConfig.kind
+                            } else {
+                                neededKind = FieldTag.StringArray
+                            }
+                        } else if (typesInArray.size === 1) {
+                            switch (typesInArray.keys().next().value) {
+                                case 'number':
+                                    neededKind = FieldTag.NumericArray
+                                    fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.NumericArray)
+                                    break
+                                case 'string':
+                                    neededKind = FieldTag.StringArray
+                                    fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.StringArray)
+                                    break
+                                case 'object':
+                                    neededKind = FieldTag.ChildArray
+                                    fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.ChildArray)
+                                    break
+                                default:
+                                    throw new Error('not yet implemented')
+                            }
+                        } else {
+                            neededKind = FieldTag.MixedArray
+                        }
                     }
                 } else if (Buffer.isBuffer(data)) {
                     neededKind = FieldTag.BufferValue
-                    fieldConfig = fieldConfigs?.find(
-                        fc => fc.kind == FieldTag.BufferValue
-                    )
+                    fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.BufferValue)
                 } else {
                     neededKind = FieldTag.Child
-                    fieldConfig = fieldConfigs?.find(
-                        fc => fc.kind == FieldTag.Child
-                    )
+                    fieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.Child)
                 }
         }
 
         if (!fieldConfig && neededKind !== undefined) {
             if (!fieldConfigs) {
                 if (current.lastId >= targetMaxFieldTagsPerLevel) {
-                    current.mapConfigs = fieldConfigs = new Array<FieldConfig>()
+                    current.overflowFieldConfigs = fieldConfigs = new Array<FieldConfig>()
                 } else {
                     fieldConfigs = new Array<FieldConfig>()
                     current.fields.set(field, fieldConfigs)
@@ -717,79 +560,61 @@ function upgradeSchema(
             }
 
             current.lastId++
-            let childDocType
+            let childSchema
 
-            if (
-                neededKind == FieldTag.Child ||
-                neededKind == FieldTag.ChildArray
-            ) {
-                childDocType = {
+            if (neededKind == FieldTag.Child || neededKind == FieldTag.ChildArray) {
+                childSchema = {
                     fields: new Map<FieldName, FieldConfig[]>(),
                     lastId: 0
                 }
 
                 if (Array.isArray(data)) {
                     for (const el of data) {
-                        if (el !== null)
-                            upgradeSchema(
-                                el,
-                                childDocType,
-                                targetMaxFieldTagsPerLevel
-                            )
+                        if (el !== null) upgradeSchema(el, childSchema, targetMaxFieldTagsPerLevel)
                     }
                 } else if (data !== null) {
-                    upgradeSchema(
-                        data,
-                        childDocType,
-                        targetMaxFieldTagsPerLevel
-                    )
+                    upgradeSchema(data, childSchema, targetMaxFieldTagsPerLevel)
                 }
             } else if (neededKind == FieldTag.MixedArray) {
-                childDocType = {
-                    fields: new Map<FieldName, FieldConfig[]>(),
-                    lastId: 0
+                const childArrayFieldConfig = fieldConfigs?.find(fc => fc.kind == FieldTag.ChildArray)
+
+                // if there was previous a config for arrays of records, reuse the yet existing schema
+                if (childArrayFieldConfig) {
+                    childSchema = childArrayFieldConfig.elementSchema as RecordSchema
+                } else {
+                    childSchema = {
+                        fields: new Map<FieldName, FieldConfig[]>(),
+                        lastId: 0
+                    }
                 }
 
-                function traverseArray(array: [], type: DocType) {
+                function traverseArray(array: [], type: RecordSchema) {
                     for (const el of array) {
                         if (el !== null && typeof el === 'object') {
                             if (Array.isArray(el)) {
                                 traverseArray(el, type)
                             } else {
-                                upgradeSchema(
-                                    el,
-                                    type,
-                                    targetMaxFieldTagsPerLevel
-                                )
+                                upgradeSchema(el, type, targetMaxFieldTagsPerLevel)
                             }
                         }
                     }
                 }
 
-                traverseArray(data, childDocType)
+                traverseArray(data, childSchema)
             }
 
             fieldConfigs.push({
                 id: current.lastId,
                 kind: neededKind,
-                docType: childDocType
+                elementSchema: childSchema
             })
-        } else if (fieldConfig?.docType) {
+        } else if (fieldConfig?.elementSchema) {
             if (Array.isArray(data)) {
                 for (const el of data) {
-                    if (el !== null)
-                        upgradeSchema(
-                            el,
-                            fieldConfig.docType,
-                            targetMaxFieldTagsPerLevel
-                        )
+                    if (el !== null) upgradeSchema(el, fieldConfig.elementSchema, targetMaxFieldTagsPerLevel)
                 }
             } else if (data !== null) {
-                upgradeSchema(
-                    data,
-                    fieldConfig.docType,
-                    targetMaxFieldTagsPerLevel
-                )
+                upgradeSchema(data, fieldConfig.elementSchema, targetMaxFieldTagsPerLevel)
             }
         }
     }
@@ -799,7 +624,7 @@ export class DocPackedArray {
     private pointers = new RoaringBitmap32()
     store: ByteBuffer
 
-    private rootSchema: DocType = {
+    private rootSchema: RecordSchema = {
         fields: new Map(),
         lastId: 0
     }
@@ -825,6 +650,8 @@ export class DocPackedArray {
         } catch (e) {
             this.store.reset()
             upgradeSchema(doc, this.rootSchema, this.targetMaxFieldTagsPerLevel)
+            const prevEncode = this.encoder?.code
+
             this.encoder = generateEncoder(this.rootSchema)
             this.decoder = generateDecoder(this.rootSchema)
 
@@ -837,9 +664,12 @@ export class DocPackedArray {
             } catch (e) {
                 this.store.reset()
                 throw new Error(
-                    `Maybe issue in generated code:\n${e}\n\ncode:\n${
-                        this.encoder.code
-                    }\n\nobject:\n${util.inspect(doc, false, null, true)}`
+                    `Maybe issue in generated code:\n${e}\n\ncode:\n${this.encoder.code}\n\nprev_code:\n${prevEncode}\n\nobject:\n${util.inspect(
+                        doc,
+                        false,
+                        null,
+                        true
+                    )}`
                 )
             }
         }

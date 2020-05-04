@@ -1,18 +1,12 @@
-import anyTest, { TestInterface } from 'ava'
-import { MemoryInvertedIndex } from '../../src'
-import {
-    and,
-    FieldConfigFlag,
-    present,
-    ResultItem,
-    token
-} from '../../src/yaii-types'
-import { Source } from 'pull-stream'
-import { Content, Msg } from 'ssb-typescript/readme'
-import { as, count, from } from 'ix/asynciterable'
+import anyTest, {TestInterface} from 'ava'
+import {MemoryInvertedIndex} from '../../src'
+import {and, Doc, FieldConfigFlag, or, present, ResultItem, SortDirection, token, not} from '../../src/yaii-types'
+import {Source} from 'pull-stream'
+import {AboutContent, ContactContent, Content, FeedId, Msg} from 'ssb-typescript/readme'
+import {as, count, first, from, reduce} from 'ix/asynciterable'
 import * as op from 'ix/asynciterable/operators'
-import { PullSourceAsyncIterator } from './pull-source-async-iterator'
-import { mooTokenizer } from '../../src/lib/analyzer/moo-tokenizer'
+import {PullSourceAsyncIterator} from './pull-source-async-iterator'
+import {mooTokenizer} from '../../src/lib/analyzer/moo-tokenizer'
 import pify = require('pify')
 
 const pull = require('pull-stream')
@@ -147,10 +141,27 @@ test('Simple test of indexing', async t => {
                 addToAllField: false,
                 analyzer: undefined
             },
+            'value.timestamp': {
+                flags: FieldConfigFlag.SORT_OPTIMIZED | FieldConfigFlag.SEARCHABLE,
+                addToAllField: false,
+                analyzer: undefined,
+            },
             'value.hash': {
                 flags: 0,
                 addToAllField: false,
                 analyzer: undefined
+            },
+            'TDA' : {
+                flags: FieldConfigFlag.SORT_OPTIMIZED,
+                addToAllField: false,
+                analyzer: undefined,
+                generator: (input: Doc) => {
+                    const msg = input as Msg<Content>
+
+                    const authorTS = msg.value.timestamp || Number.MAX_SAFE_INTEGER
+
+                    return Math.min(Math.floor(msg.timestamp), Math.floor(authorTS))
+                }
             }
         },
         {
@@ -189,6 +200,7 @@ test('Simple test of indexing', async t => {
 
     const messages = from(new PullSourceAsyncIterator(source)).pipe(
         op.filter(filterTypes),
+        op.take(50000),
         op.map((value, index) => {
             if (index % 30000 == 0) {
                 const end = new Date()
@@ -221,28 +233,42 @@ test('Simple test of indexing', async t => {
     //console.log(index.listAllKnownField())
 
     console.log('--------------------------------------------------')
-    const returnedResult = await count(
-        index
-            .query(
-                and(
-                    token('about', 'value.content.type'),
-                    token(
-                        '@gBZQVjIukvbX8Bs22vdTfAHMiVfE9nR+NvXQYVaqeIg=.ed25519',
-                        'value.author'
-                    )
-                )
-            )
-            .pipe(op.tap(x => log(x)))
-    )
+    // look for all 'about' messages from one identity, gather last names
+
+    const profileId = await t.context.server.whoami().id
+
+    const query = index
+        .query<Msg<AboutContent>>(and(
+            token('about', 'value.content.type'),
+            token(profileId, 'value.author'),
+            token(profileId, 'value.content.about')
+        ), [
+            {field:"TDA", dir: SortDirection.DESCENDING}
+        ])
+        .pipe(
+            op.tap(x => log(x)),
+            op.map(x  => x._source),
+        )
+
+
+    const returnedResult = await reduce(query, (previousValue: string[], currentValue: Msg<AboutContent> | undefined, currentIndex) => {
+            const name =  currentValue?.value.content.name
+            if (name) {
+                previousValue.unshift(name)
+            }
+            return previousValue
+        }, [])
+
+
+    console.log("last names used: ", returnedResult)
 
     console.log('--------------------------------------------------')
+    // count msgs group by type where the profile id appears in any field
 
-    const allReferencing = index.query(
-        and(
-            present('value.content.type'),
-            token('@gBZQVjIukvbX8Bs22vdTfAHMiVfE9nR+NvXQYVaqeIg=.ed25519')
-        )
-    )
+    const allReferencing = index.query<Msg<Content>>(and(
+        present('value.content.type'),
+        token(profileId)
+    ))
 
     // @ts-ignore
     const returnedResult2 = await allReferencing.pipe(
@@ -252,7 +278,7 @@ test('Simple test of indexing', async t => {
             throw error
         }),
         op.groupBy(
-            (doc: ResultItem) => {
+            (doc: ResultItem<Msg<Content>>) => {
                 // @ts-ignore
                 const msg: Msg<Content> = doc._source as Msg<Content>
                 if (msg.value.content?.type) {
@@ -272,10 +298,121 @@ test('Simple test of indexing', async t => {
     }
 
     console.log('--------------------------------------------------')
+    // building a social network data structure from me with classic async coding way demo
 
-    const returnedResult3 = await count(
-        index.query(and(token('borric'))).pipe(op.tap(d => log(d)))
-    )
+    const identities = new Map<FeedId, Network>()
 
-    t.true(returnedResult3 > 0)
+    const returnedResult3 =
+        index.query<Msg<ContactContent>>(
+                and(
+                    token('contact', 'value.content.type'),
+                    token(profileId, 'value.author'),
+                )
+            )
+
+
+    for await (const result of returnedResult3) {
+        const msg = result._source as Msg<ContactContent>
+        log(msg)
+        const author = msg.value.author
+        const contact = msg.value.content.contact
+        const following = msg.value.content.following
+        const blocking = msg.value.content.blocking
+
+        if (contact) {
+
+            let identity= identities.get(author)
+            if (!identity) {
+                identity = {} as Network
+                identities.set(author, identity)
+            }
+
+            let identityRel = identity[contact]
+            if (!identityRel) {
+                identityRel = {
+                    lastUpdate: Number.MIN_SAFE_INTEGER,
+                    status: "neutral"
+                }
+                identity[contact] = identityRel
+            }
+
+            if (msg.value.timestamp > identityRel.lastUpdate) {
+                identityRel.lastUpdate = msg.value.timestamp
+                if (following === true) {
+                    identityRel.status = "following"
+                } else if (blocking === true) {
+                    identityRel.status = "blocking"
+                } else if (following === false || blocking === false) {
+                    identityRel.status = "neutral"
+                }
+            }
+
+
+        }
+    }
+
+    log(identities.get(profileId))
+    log(identities)
+
+
+    console.log('--------------------------------------------------')
+
+    // a more efficient approach than recreating a new structure to hold reduced states while perfectly viable performance wise
+
+    async function getName(id: FeedId) {
+        const iter = index.query<Msg<AboutContent>>(and(
+                token('about', 'value.content.type'),
+                token(id, 'value.author'),
+                token(id, 'value.content.about'),
+                present('value.content.name')
+            ), [
+                {field:"TDA", dir: SortDirection.DESCENDING}
+            ], 1)[Symbol.asyncIterator]()
+
+        return iter.next().then(r => r.value?._source.value?.content?.name)
+    }
+
+    async function* getFollowed(id: FeedId) {
+        const iter = index.query<Msg<ContactContent>>(and(
+            token('contact', 'value.content.type'),
+            token(id, 'value.author'),
+            or(present('value.content.following'), present('value.content.blocking'))
+        ),
+            [{field:'value.timestamp', dir:SortDirection.DESCENDING}]
+        ).pipe(
+            op.tap(log),
+            op.map(r => r._source as Msg<ContactContent>),
+            op.groupBy(
+                msg => msg.value.content.contact,
+                msg => msg.value
+                )
+        )
+
+        for await (const result of iter) {
+            const lastUpdate = await first(result)
+            if (result.key && lastUpdate?.content.following === true) {
+                yield result.key
+            }
+        }
+    }
+
+
+    log(await getName(profileId))
+    for await (const followed of getFollowed(profileId)) {
+        const name = await getName(followed)
+        log(`|-> follows '${name} (${followed})`)
+    }
+
+
+
+    t.pass()
+
 })
+
+type RelationStatus = {
+    lastUpdate: number,
+    status: "following" | "blocking" | "neutral"
+}
+
+type Network = Record<FeedId, RelationStatus>
+

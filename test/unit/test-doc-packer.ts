@@ -1,6 +1,6 @@
 import test from 'ava'
-import { DocPackedArray } from '../../src/lib/doc-packed-array'
-import { Doc } from '../../src/yaii-types'
+import {DocPackedArray} from '../../src/lib/doc-packed-array'
+import {Doc} from '../../src/yaii-types'
 
 test('basic depth 2', t => {
     const doc1 = {
@@ -200,7 +200,7 @@ test('complex', t => {
                         link:
                             '&0G4wHVLwl+/PB+y93kAwNUK2tzVuclb5kM9qDb7gFus=.sha256',
                         size: 5743,
-                        dependencies: { semver: '^5.4.1' }
+                        dependencies: {semver: '^5.4.1'}
                     },
                     {
                         name: 'npm:pull-iterable:0.1.0:',
@@ -374,8 +374,8 @@ test('mixed array', t => {
         mentions: [
             1,
             'string',
-            { hello: 'world' },
-            [3, 'hello', { world: 'hello' }]
+            {hello: 'world'},
+            [3, 'hello', {world: 'hello'}]
         ]
     }
 
@@ -393,7 +393,7 @@ test('mixed array', t => {
 test('array of record', t => {
     const doc1 = {
         key: '%hTvbdzaK1+I4KdOfnNshpn0rm4KkWhygzKFtQpLcniY=.sha256',
-        value: [{ id: '1' }, { id: '2' }, { id: '3' }]
+        value: [{id: '1'}, {id: '2'}, {id: '3'}]
     }
 
     const docPacker = new DocPackedArray()
@@ -405,7 +405,7 @@ test('array of record', t => {
     t.deepEqual(docPacker.get(0), doc1)
 })
 
-test('array of msgs', t => {
+test('array of msgs larger than initial buffer', t => {
     const doc1 = [
         {
             key: '%2iqaCVWTsOjc6ucNLFAbPUtzVNXaeaNc2ZWATqRPF/4=.sha256',
@@ -668,96 +668,92 @@ test('array of msgs', t => {
     }
 })
 
-function testDecode(pointer: number, store: any) {}
+test('null in field', t => {
+    const doc1 = {
+        key: '%QU8kBbuXVoC2byk6uHxIXenrOL8DLs6TDO9/fSyIxUU=.sha256',
+        value: {
+            previous: '%AF7+ug0/De42jW9nnQ3NCRlZk+KZRX2sYQ3KR+YL62E=.sha256',
+            author: '@iL6NzQoOLFP18pCpprkbY80DMtiG4JFFtVSVUaoGsOQ=.ed25519',
+            sequence: 14970,
+            timestamp: 1557449015235,
+            hash: 'sha256',
+            content: {
+                type: 'post',
+                root: '%iwcpih1WX8O7D5ofuB9kTr5vScUPVGffWWl1g95VVok=.sha256',
+                branch: '%sf2wCGLvVijEuWeKBJTbLonkQnDa+RpF+mDEQI8JjQ0=.sha256',
+                reply: {
+                    '%iwcpih1WX8O7D5ofuB9kTr5vScUPVGffWWl1g95VVok=.sha256': '@C3iYh/12sO1uvKq1KcZXLFxSySzxOkHxXN8rtNB5MGA=.ed25519',
+                    '%sf2wCGLvVijEuWeKBJTbLonkQnDa+RpF+mDEQI8JjQ0=.sha256': '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519'
+                },
+                channel: 'bayarea',
+                recps: null,
+                text: "[@SpencerHadley](@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519) what did you use for a thrasher when you grew wheat? (I'm assuming you are no longer growing wheat?) ",
+                mentions: [
+                    {
+                        link: '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519',
+                    },
+                ]
+            },
+            signature: 'WojTMj3qukVqRNdm/HudNWd3yOHQ8oDHMSpYpfrtIDtEFn3ne8CyJL28zkHu37qIComGZ2SlDkHW1RxkovQnAQ==.sig.ed25519'
+        },
+        timestamp: 1585561331589.002
+    }
+
+    const doc2 = {
+        key: '%QU8kBbuXVoC2byk6uHxIXenrOL8DLs6TDO9/fSyIxUU=.sha256',
+        value: {
+            previous: '%AF7+ug0/De42jW9nnQ3NCRlZk+KZRX2sYQ3KR+YL62E=.sha256',
+            author: '@iL6NzQoOLFP18pCpprkbY80DMtiG4JFFtVSVUaoGsOQ=.ed25519',
+            sequence: 14970,
+            timestamp: 1557449015235,
+            hash: 'sha256',
+            content: {
+                type: 'post',
+                root: '%iwcpih1WX8O7D5ofuB9kTr5vScUPVGffWWl1g95VVok=.sha256',
+                branch: '%sf2wCGLvVijEuWeKBJTbLonkQnDa+RpF+mDEQI8JjQ0=.sha256',
+                reply: {
+                    '%iwcpih1WX8O7D5ofuB9kTr5vScUPVGffWWl1g95VVok=.sha256': '@C3iYh/12sO1uvKq1KcZXLFxSySzxOkHxXN8rtNB5MGA=.ed25519',
+                    '%sf2wCGLvVijEuWeKBJTbLonkQnDa+RpF+mDEQI8JjQ0=.sha256': '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519'
+                },
+                channel: 'bayarea',
+                recps: null,
+                text: "[@SpencerHadley](@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519) what did you use for a thrasher when you grew wheat? (I'm assuming you are no longer growing wheat?) ",
+                mentions: [
+                    {
+                        link: '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519',
+                        name: 'SpencerHadley'
+                    },
+                    "chaine",
+                    [
+                        '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519', '@pMMUGwiEuuU1WKTQlby9SM/wkY4s0VKLqZ+P+Wmewpc=.ed25519'
+                    ]
+                ]
+            },
+            signature: 'WojTMj3qukVqRNdm/HudNWd3yOHQ8oDHMSpYpfrtIDtEFn3ne8CyJL28zkHu37qIComGZ2SlDkHW1RxkovQnAQ==.sig.ed25519'
+        },
+        timestamp: 1585561331589.002
+    }
+
+    const docPacker = new DocPackedArray()
+
+
+    // @ts-ignore
+    //testEncode(doc1, docPacker.store)
+    docPacker.add(doc1)
+    // @ts-ignore
+    docPacker.add(doc2)
+
+    t.is(docPacker.length, 2)
+    // @ts-ignore
+    t.deepEqual(docPacker.get(0), doc1)
+})
+
+
+function testDecode(pointer: number, store: any) {
+    let result = {};
+    return result;
+}
 
 function testEncode(doc: any, store: any) {
-    for (const [field, data] of Object.entries(doc)) {
-        switch (field) {
-            case 'key': {
-                store.writeVarint32(1)
-                store.writeVString(data)
-                break
-            }
-            case 'value': {
-                store.writeVarint32(2)
-                // @ts-ignore
-                store.writeVarint32(data.length)
-                // @ts-ignore
-                for (const doc of data) {
-                    if (doc === null) {
-                        store.writeVarint32(-1)
-                    } else {
-                        for (const [field, data] of Object.entries(doc)) {
-                            switch (field) {
-                                case 'id': {
-                                    store.writeVarint32(1)
-                                    store.writeVString(data)
-                                    break
-                                }
-                                default:
-                                    throw new Error(
-                                        'failure with field .value.' + field
-                                    )
-                            }
-                        }
-                        store.writeVarint32(0x00)
-                    }
-                }
 
-                // @ts-ignore
-                function encodeMixedArray(array) {
-                    store.writeVarint32(array.length)
-                    for (const el of array) {
-                        if (el === null) {
-                            store.writeVarint32(-1)
-                        } else {
-                            const typeofdoc = typeof el
-                            if (typeofdoc === 'number') {
-                                store.writeVarint32(1)
-                                store.writeDouble(el)
-                            } else if (typeofdoc === 'string') {
-                                store.writeVarint32(3)
-                                store.writeVString(el)
-                            } else if (Array.isArray(el)) {
-                                store.writeVarint32(8)
-                                encodeMixedArray(el)
-                            } else {
-                                store.writeVarint32(5)
-                                {
-                                    const doc = el
-                                    if (doc === null) {
-                                        store.writeVarint32(-1)
-                                    } else {
-                                        for (const [
-                                            field,
-                                            data
-                                        ] of Object.entries(doc)) {
-                                            switch (field) {
-                                                case 'id': {
-                                                    store.writeVarint32(1)
-                                                    store.writeVString(data)
-                                                    break
-                                                }
-                                                default:
-                                                    throw new Error(
-                                                        'failure with field .value.' +
-                                                            field
-                                                    )
-                                            }
-                                        }
-                                        store.writeVarint32(0x00)
-                                    }
-                                }
-                            }
-                        }
-                    } /* end for */
-                } /* end function */
-                encodeMixedArray(data)
-                break
-            }
-            default:
-                throw new Error('failure with field .' + field)
-        }
-    }
-    store.writeVarint32(0x00)
 }

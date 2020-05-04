@@ -45,8 +45,7 @@ export interface NumberQuery extends ExactMatchLeafQuery<NumericFieldValue> {
     readonly operator: QueryOperator.NUMBER
 }
 
-export interface NumberRangeQuery
-    extends RangeMatchLeafQuery<NumericFieldValue> {
+export interface NumberRangeQuery extends RangeMatchLeafQuery<NumericFieldValue> {
     readonly operator: QueryOperator.NUMBER_RANGE
 }
 
@@ -88,10 +87,7 @@ export function all(): AllQuery {
     }
 }
 
-export function number(
-    value: NumericFieldValue,
-    field?: FieldName
-): NumberQuery {
+export function number(value: NumericFieldValue, field?: FieldName): NumberQuery {
     return {
         operator: QueryOperator.NUMBER,
         field: field,
@@ -128,16 +124,22 @@ export function numberRange(
     }
 }
 
-export function and(...Querys: Query[]): AndQuery {
+export function and(...queries: Query[]): AndQuery {
     return {
         operator: QueryOperator.AND,
-        operands: Querys
+        operands: queries
     }
 }
 
-export function or(...Querys: Query[]): OrQuery {
+export function or(...queries: Query[]): OrQuery {
     return {
         operator: QueryOperator.OR,
-        operands: Querys
+        operands: queries
+    }
+}
+export function not(query: Query): NotQuery {
+    return {
+        operator: QueryOperator.NOT,
+        operand: query
     }
 }

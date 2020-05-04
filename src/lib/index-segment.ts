@@ -1,21 +1,9 @@
-import {
-    Doc,
-    FieldConfigFlag,
-    FieldName,
-    FieldStorableValue,
-    FieldValue,
-    FieldValues,
-    ResultItem
-} from '../yaii-types'
+import { Doc, FieldConfigFlag, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem } from '../yaii-types'
 import { AsyncIterableX, count, from } from 'ix/asynciterable'
 import { RoaringBitmap32 } from 'roaring'
 import * as op from 'ix/asynciterable/operators'
-import { ExtFieldConfig, ExtFieldsIndexConfig, ExtIndexConfig } from './utils'
-import {
-    BitmapAsyncIterable,
-    DocIdAsyncIterable,
-    SingletonDocIdAsyncIterable
-} from './bitmap'
+import { DocId, ExtFieldConfig, ExtFieldsIndexConfig, ExtIndexConfig, ICompareFunction } from './utils'
+import { BitmapAsyncIterable, DocIdAsyncIterable, SingletonDocIdAsyncIterable } from './bitmap'
 import { IndexableDoc } from '../index'
 import { DocPackedArray } from './doc-packed-array'
 import { INTERNAL_FIELDS, stringToTerm } from './query-ir'
@@ -26,26 +14,16 @@ type B64Token = string
 export class IndexSegment {
     private fieldsIndexConfig: ExtFieldsIndexConfig
     private indexConfig: ExtIndexConfig
-    private perFieldMap: Map<
-        FieldName,
-        Map<B64Token, RoaringBitmap32 | number>
-    > = new Map()
+    private perFieldMap: Map<FieldName, Map<B64Token, RoaringBitmap32 | number>> = new Map()
     private perFieldValue = new DocPackedArray()
     private docSourceStore: DocPackedArray | undefined
-    private perSortedFieldValue: Map<
-        FieldName,
-        SortFieldPackedArray
-    > = new Map()
+    private perSortedFieldValue: Map<FieldName, SortFieldPackedArray> = new Map()
     from: number
     next: number
 
     private hasStoredFields: boolean = false
 
-    constructor(
-        fieldsIndexConfig: ExtFieldsIndexConfig,
-        indexConfig: ExtIndexConfig,
-        from?: number
-    ) {
+    constructor(fieldsIndexConfig: ExtFieldsIndexConfig, indexConfig: ExtIndexConfig, from?: number) {
         this.from = from || 0
         this.next = from || 0
 
@@ -91,7 +69,7 @@ export class IndexSegment {
             const storedFields: Doc = {}
 
             for (const [fieldName, fieldValue] of Object.entries(doc)) {
-                if (fieldValue) {
+                if (typeof fieldValue !== 'undefined') {
                     let conf = this.fieldsIndexConfig[fieldName]
 
                     if (!conf && this.indexConfig.defaultFieldConfig) {
@@ -107,57 +85,36 @@ export class IndexSegment {
                         if (conf.flags & FieldConfigFlag.STORED) {
                             storedFields[fieldName] = fieldValue
 
-                            nonEmptyFields.set(
-                                stringToTerm(fieldName).toString('base64'),
-                                true
-                            )
+                            nonEmptyFields.set(stringToTerm(fieldName).toString('base64'), true)
                         }
 
                         // update bitmaps
-                        if (
-                            conf.flags & FieldConfigFlag.SEARCHABLE &&
-                            !Buffer.isBuffer(fieldValue)
-                        ) {
+                        if (conf.flags & FieldConfigFlag.SEARCHABLE && !Buffer.isBuffer(fieldValue)) {
                             const tokens = conf.tokenizer(fieldValue)
 
                             if (tokens.length > 0) {
-                                const mapTree = this.perFieldMap.get(
-                                    fieldName
-                                ) as Map<B64Token, RoaringBitmap32 | number>
+                                const mapTree = this.perFieldMap.get(fieldName) as Map<B64Token, RoaringBitmap32 | number>
                                 for (const token of tokens) {
                                     const key = token.toString('base64')
                                     const map = mapTree.get(key)
                                     if (map == undefined) {
                                         mapTree.set(key, index)
                                     } else if (typeof map === 'number') {
-                                        mapTree.set(
-                                            key,
-                                            RoaringBitmap32.from([map, index])
-                                        )
+                                        mapTree.set(key, RoaringBitmap32.from([map, index]))
                                     } else {
                                         map.add(index)
                                     }
                                 }
 
-                                nonEmptyFields.set(
-                                    stringToTerm(fieldName).toString('base64'),
-                                    true
-                                )
+                                nonEmptyFields.set(stringToTerm(fieldName).toString('base64'), true)
                             }
                         }
 
                         // update sort fields
-                        if (
-                            conf.flags & FieldConfigFlag.SORT_OPTIMIZED &&
-                            !Buffer.isBuffer(fieldValue)
-                        ) {
-                            const val = Array.isArray(fieldValue)
-                                ? fieldValue[0]
-                                : fieldValue
+                        if (conf.flags & FieldConfigFlag.SORT_OPTIMIZED && !Buffer.isBuffer(fieldValue)) {
+                            const val = Array.isArray(fieldValue) ? fieldValue[0] : fieldValue
 
-                            const array = this.perSortedFieldValue.get(
-                                fieldName
-                            ) as SortFieldPackedArray
+                            const array = this.perSortedFieldValue.get(fieldName) as SortFieldPackedArray
                             array.add(val)
                         }
                     }
@@ -165,9 +122,7 @@ export class IndexSegment {
             }
             // index non empty fields list
             if (nonEmptyFields.size > 0) {
-                const mapTree = this.perFieldMap.get(
-                    INTERNAL_FIELDS.FIELDS
-                ) as Map<B64Token, RoaringBitmap32>
+                const mapTree = this.perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<B64Token, RoaringBitmap32>
 
                 for (const key of nonEmptyFields.keys()) {
                     const map = mapTree.get(key)
@@ -194,25 +149,19 @@ export class IndexSegment {
         return this.next - this.from
     }
 
-    project(
-        docIds: AsyncIterable<number>,
-        projection: Array<FieldName>
-    ): AsyncIterableX<ResultItem> {
+    project<T extends Doc>(docIds: AsyncIterable<number>, projection: Array<FieldName>): AsyncIterableX<ResultItem<T>> {
         const fromIndex = this.from
 
-        if (
-            projection.length == 1 &&
-            projection[0] === INTERNAL_FIELDS.SOURCE
-        ) {
+        if (projection.length == 1 && projection[0] === INTERNAL_FIELDS.SOURCE) {
             const store = this.docSourceStore
             let generator
             if (store) {
                 generator = async function*() {
                     for await (const docId of docIds) {
                         try {
-                            const sourceDoc = store.get(docId - fromIndex)
+                            const sourceDoc = store.get(docId - fromIndex) as T
 
-                            const doc: ResultItem = {
+                            const doc: ResultItem<T> = {
                                 _id: docId,
                                 _source: sourceDoc
                             }
@@ -242,18 +191,15 @@ export class IndexSegment {
                 store = this.perFieldValue
                 generator = async function*() {
                     for await (const docId of docIds) {
-                        const doc: ResultItem = {
+                        const doc: ResultItem<T> = {
                             _id: docId
                         }
 
-                        const allStoredFields = store.get(docId)
+                        const allStoredFields = store.get(docId) as Doc
 
                         for (let i = 0; i < projection.length; i++) {
                             const fieldName = projection[i]
-                            doc[fieldName] = allStoredFields[fieldName] as
-                                | FieldValue
-                                | FieldValues
-                                | FieldStorableValue
+                            doc[fieldName] = allStoredFields[fieldName] as FieldValue | FieldValues | FieldStorableValue
                         }
 
                         yield doc
@@ -262,7 +208,7 @@ export class IndexSegment {
             } else {
                 generator = async function*() {
                     for await (const docId of docIds) {
-                        const doc: ResultItem = {
+                        const doc: ResultItem<T> = {
                             _id: docId
                         }
 
@@ -270,6 +216,7 @@ export class IndexSegment {
                     }
                 }
             }
+
             return from(generator())
         }
     }
@@ -285,5 +232,9 @@ export class IndexSegment {
         } else {
             return BitmapAsyncIterable.EMPTY_MAP
         }
+    }
+
+    getOptimizedComparator(fieldName: FieldName): ICompareFunction<DocId> | undefined {
+        return this.perSortedFieldValue.get(fieldName)?.comparator
     }
 }

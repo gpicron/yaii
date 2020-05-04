@@ -1,20 +1,20 @@
-import anyTest, { TestInterface } from 'ava'
-import { MemoryInvertedIndex } from '../../src'
+import anyTest, {TestInterface} from 'ava'
+import {MemoryInvertedIndex} from '../../src'
 import {
     all,
     and,
     Doc,
-    FieldConfigFlag,
+    FieldConfigFlag, not,
     number,
     numberRange,
-    or,
+    or, present,
     QueryOperator,
     ResultItem,
     SortClause,
     SortDirection,
     token
 } from '../../src/yaii-types'
-import { as, toArray, toSet } from 'ix/asynciterable'
+import {as, last, toArray, toSet} from 'ix/asynciterable'
 import * as op from 'ix/asynciterable/operators'
 
 interface TestContext {
@@ -29,8 +29,8 @@ test.before(async t => {
 
 test('Simple test of indexing', async t => {
     const index = new MemoryInvertedIndex({
-        id: { flags: FieldConfigFlag.STORED },
-        flag: { flags: FieldConfigFlag.SEARCHABLE }
+        id: {flags: FieldConfigFlag.STORED},
+        flag: {flags: FieldConfigFlag.SEARCHABLE}
     })
 
     await index.add({
@@ -64,12 +64,9 @@ test('Simple test of indexing', async t => {
 
     const allDocsId = await toSet(
         index
-            .query(
-                {
-                    operator: QueryOperator.ALL
-                },
-                ['id']
-            )
+            .query({
+                operator: QueryOperator.ALL
+            }, undefined, undefined, ['id'])
             .pipe(op.map(value => value.id))
     )
 
@@ -83,51 +80,59 @@ const docs = [
         text: 'lorem ipsum',
         token_data: 'abc',
         number_data: 20,
+        number_data_opt_sort: 20,
         unknown_data: 'ufg about test'
     },
     {
         id: '13',
         text: 'dolor',
         token_data: 'efg',
-        number_data: 30
+        number_data: 30,
+        number_data_opt_sort: 30
     },
     {
         id: '14',
         text: 'this is a demo',
         token_data: ['abc', 'bcd'],
-        number_data: 25
+        number_data: 25,
+        number_data_opt_sort: 25
     },
     {
         id: '15',
         text: 'and it is working',
         token_data: 'hij',
-        number_data: 10000000
+        number_data: 10000000,
+        number_data_opt_sort: 10000000
     }
 ]
 
 async function createIndex() {
     const index = new MemoryInvertedIndex({
-        id: { flags: FieldConfigFlag.STORED },
-        text: { flags: FieldConfigFlag.SEARCHABLE, addToAllField: false },
-        token_data: { flags: FieldConfigFlag.SEARCHABLE },
-        number_data: { flags: FieldConfigFlag.SEARCHABLE }
+        id: {flags: FieldConfigFlag.STORED},
+        text: {flags: FieldConfigFlag.SEARCHABLE, addToAllField: false},
+        token_data: {flags: FieldConfigFlag.SEARCHABLE},
+        number_data: {flags: FieldConfigFlag.SEARCHABLE},
+        number_data_opt_sort: {flags: FieldConfigFlag.SORT_OPTIMIZED}
     })
 
     await index.add(as(docs as Array<Doc>))
     return index
 }
 
-// @ts-ignore
+
 async function assertQuery(
+    // @ts-ignore
     t,
+    // @ts-ignore
     query,
+    // @ts-ignore
     expected,
     querySort?: Array<SortClause>,
     limit = 1000
 ) {
     let allDocsId = await toArray(
         (t.context.index as MemoryInvertedIndex)
-            .query(query, ['id'], limit, querySort)
+            .query(query, querySort, limit, ['id'])
             .pipe(op.map(value => value.id))
     )
     if (!querySort) {
@@ -243,20 +248,20 @@ test('Test Sort query', async t => {
         t,
         numberRange('number_data', 20, 30, true, true),
         ['12', '13'],
-        [{ field: 'id', dir: SortDirection.ASCENDING }],
+        [{field: 'id', dir: SortDirection.ASCENDING}],
         2
     )
     await assertQuery(
         t,
         numberRange('number_data', 20, 30, true, true),
         ['14', '13', '12'],
-        [{ field: 'id', dir: SortDirection.DESCENDING }]
+        [{field: 'id', dir: SortDirection.DESCENDING}]
     )
     await assertQuery(
         t,
         numberRange('number_data', 20, 30, true, true),
         ['12', '13', '14'],
-        [{ field: 'id', dir: SortDirection.ASCENDING }]
+        [{field: 'id', dir: SortDirection.ASCENDING}]
     )
 })
 
@@ -264,21 +269,21 @@ test('Test Sort query on sort optimized', async t => {
     await assertQuery(
         t,
         numberRange('number_data', 20, 30, true, true),
-        ['12', '13'],
-        [{ field: 'id', dir: SortDirection.ASCENDING }],
+        ['12', '14'],
+        [{field: 'number_data_opt_sort', dir: SortDirection.ASCENDING}],
         2
     )
     await assertQuery(
         t,
         numberRange('number_data', 20, 30, true, true),
-        ['14', '13', '12'],
-        [{ field: 'id', dir: SortDirection.DESCENDING }]
+        ['13', '14', '12'],
+        [{field: 'number_data_opt_sort', dir: SortDirection.DESCENDING}]
     )
     await assertQuery(
         t,
         numberRange('number_data', 20, 30, true, true),
-        ['12', '13', '14'],
-        [{ field: 'id', dir: SortDirection.ASCENDING }]
+        ['12', '14', '13'],
+        [{field: 'number_data_opt_sort', dir: SortDirection.ASCENDING}]
     )
 })
 
@@ -297,7 +302,7 @@ test('Test Query on _all field config, default config of all use stop words filt
 })
 
 test('Test is _source present', async t => {
-    const data: ResultItem[] = await toArray(t.context.index.query(all()))
+    const data: ResultItem<Doc>[] = await toArray(t.context.index.query(all()))
 
     t.is(data.length, 4)
     data.sort((a: any, b: any) =>
@@ -308,6 +313,42 @@ test('Test is _source present', async t => {
         const resultDoc: any = data[i]
 
         t.deepEqual(resultDoc._source, docs[i])
+    }
+
+    t.pass()
+})
+
+
+test('a contact msg', async t => {
+    const msg = {
+            key: '%Wc6Sx0lTGfnkpjUdiZHtUyQR0xzljXQTt2o/jUWMt6c=.sha256',
+            value: {
+                previous: '%pw87GGr85sF4J4kYuucSrHXaQ7uFHOhlY99XeZUccxE=.sha256',
+                sequence: 3,
+                author: '@gBZQVjIukvbX8Bs22vdTfAHMiVfE9nR+NvXQYVaqeIg=.ed25519',
+                timestamp: 1585556287675,
+                hash: 'sha256',
+                content: {
+                    type: 'contact',
+                    contact: '@4TG/WLESyhThgTvmi5W3baX//tbF0HyskFprREqHbyc=.ed25519',
+                    following: true,
+                    autofollow: true
+                },
+                signature: 'lGFM57fF8edvW7wY3kiDvVHX7755ZiATvJFIa20/dvWnsA74pFPRrMHEyDgLdAibe9iakSWlIb4rgiQ1y/S3AQ==.sig.ed25519'
+            },
+            timestamp: 1585556287676
+        }
+
+
+    await t.context.index.add(msg)
+
+    const query = and(
+        token('contact', 'value.content.type'),
+        present('value.content.following')
+    )
+
+    for await (const r of t.context.index.query(query)) {
+        t.deepEqual(r._source, msg)
     }
 
     t.pass()
