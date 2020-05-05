@@ -6,7 +6,7 @@ import { DocId, ExtFieldConfig, ExtFieldsIndexConfig, ExtIndexConfig, ICompareFu
 import { BitmapAsyncIterable, DocIdAsyncIterable, SingletonDocIdAsyncIterable } from './bitmap'
 import { IndexableDoc } from '../index'
 import { DocPackedArray } from './doc-packed-array'
-import { INTERNAL_FIELDS, stringToTerm } from './query-ir'
+import { INTERNAL_FIELDS } from './query-ir'
 import { SortFieldPackedArray } from './sort_field_packed_array'
 
 type B64Token = string
@@ -85,7 +85,7 @@ export class IndexSegment {
                         if (conf.flags & FieldConfigFlag.STORED) {
                             storedFields[fieldName] = fieldValue
 
-                            nonEmptyFields.set(stringToTerm(fieldName).toString('base64'), true)
+                            nonEmptyFields.set(fieldName, true)
                         }
 
                         // update bitmaps
@@ -106,7 +106,7 @@ export class IndexSegment {
                                     }
                                 }
 
-                                nonEmptyFields.set(stringToTerm(fieldName).toString('base64'), true)
+                                nonEmptyFields.set(fieldName, true)
                             }
                         }
 
