@@ -1,4 +1,4 @@
-import { Doc } from '../yaii-types'
+import { Doc } from '../../api/base'
 import { RoaringBitmap32 } from 'roaring'
 import * as util from 'util'
 import ByteBuffer = require('bytebuffer')
@@ -30,7 +30,9 @@ type RecordSchema = {
     overflowFieldConfigs?: FieldConfig[]
 }
 
-function generateCodeForEncofingFieldConfig(fieldConfig: FieldConfig, fieldName: FieldName, root: string) {
+type Code = string
+
+function generateCodeForEncofingFieldConfig(fieldConfig: FieldConfig, fieldName: FieldName, root: string): Code {
     let code = ''
     switch (fieldConfig.kind) {
         case FieldTag.Boolean:
@@ -112,12 +114,12 @@ function generateCodeForEncofingFieldConfig(fieldConfig: FieldConfig, fieldName:
             break
 
         default:
-            throw new Error('not yet implemented for ' + fieldConfig.kind)
+            throw new Error(`not yet implemented for ${fieldConfig.kind}`)
     }
     return code
 }
 
-function generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs: FieldConfig[], writeFieldName: boolean, fieldName: FieldName, root: string) {
+function generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs: FieldConfig[], writeFieldName: boolean, fieldName: FieldName, root: string): Code {
     let code = ''
     if (primitiveArrayFieldConfigs.length == 1) {
         code += `store.writeVarint32(${primitiveArrayFieldConfigs[0].id});`
@@ -149,21 +151,21 @@ function generateEncoderForPrimitiveArrays(primitiveArrayFieldConfigs: FieldConf
     return code
 }
 
-function generateEncoderCodeForRecordArray(arrayChildFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string) {
+function generateEncoderCodeForRecordArray(arrayChildFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string): Code {
     let code = `store.writeVarint32(${arrayChildFieldConfig.id});`
     if (writeFieldName) code += `store.writeVString(field);`
     code += generateCodeForEncofingFieldConfig(arrayChildFieldConfig, fieldName, root)
     return code
 }
 
-function generateEncoderCodeForChildRecord(childFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string) {
+function generateEncoderCodeForChildRecord(childFieldConfig: FieldConfig, writeFieldName: boolean, fieldName: FieldName, root: string): Code {
     let code = `store.writeVarint32(${childFieldConfig.id});`
     if (writeFieldName) code += `store.writeVString(field);`
     code += generateCodeForEncofingFieldConfig(childFieldConfig, fieldName, root)
     return code
 }
 
-function generateCodeForEncondingMultiTypeField(fieldConfigs: FieldConfig[], fieldName: FieldName, root: string, writeFieldName: boolean = false) {
+function generateCodeForEncondingMultiTypeField(fieldConfigs: FieldConfig[], fieldName: FieldName, root: string, writeFieldName: boolean = false): Code {
     let code = 'switch (typeof data) {'
 
     const primitiveFieldConfigs = fieldConfigs.filter(f => f.kind == FieldTag.Boolean || f.kind == FieldTag.String || f.kind == FieldTag.Numeric)
@@ -249,7 +251,7 @@ function generateCodeForEncondingMultiTypeField(fieldConfigs: FieldConfig[], fie
     return code
 }
 
-function generateEncoderCodeForSchema(type: RecordSchema, root = '') {
+function generateEncoderCodeForSchema(type: RecordSchema, root = ''): Code {
     let code = `for (const [field, data] of Object.entries(doc)) {`
 
     code += ' switch (field) {'
@@ -289,7 +291,7 @@ function generateEncoderCodeForSchema(type: RecordSchema, root = '') {
     return code
 }
 
-function generateCodeForDecodingField(fieldConfig: FieldConfig, fieldName: string | null) {
+function generateCodeForDecodingField(fieldConfig: FieldConfig, fieldName: string | null): Code {
     let code = `case ${fieldConfig.id}: {`
 
     let fieldIndex
@@ -397,7 +399,7 @@ function generateCodeForDecodingField(fieldConfig: FieldConfig, fieldName: strin
     return code
 }
 
-function generateDecoderCodeForType(type: RecordSchema) {
+function generateDecoderCodeForType(type: RecordSchema): Code {
     let code = ''
     code += `let result = {};`
     code += `const nextRead = store.readVarint32(pointer); pointer+=nextRead.length; let fieldId=nextRead.value; `
@@ -465,7 +467,7 @@ function generateDecoder(type: RecordSchema): GeneratedDecoder {
     }
 }
 
-function upgradeSchema(doc: object, current: RecordSchema, targetMaxFieldTagsPerLevel: number) {
+function upgradeSchema(doc: object, current: RecordSchema, targetMaxFieldTagsPerLevel: number): void {
     if (!doc) {
         throw new Error()
     }
@@ -588,7 +590,7 @@ function upgradeSchema(doc: object, current: RecordSchema, targetMaxFieldTagsPer
                     }
                 }
 
-                function traverseArray(array: [], type: RecordSchema) {
+                function traverseArray(array: [], type: RecordSchema): void {
                     for (const el of array) {
                         if (el !== null && typeof el === 'object') {
                             if (Array.isArray(el)) {

@@ -1,12 +1,13 @@
 import anyTest, {TestInterface} from 'ava'
 import {MemoryInvertedIndex} from '../../src'
-import {and, Doc, FieldConfigFlag, or, present, ResultItem, SortDirection, token, not} from '../../src/yaii-types'
+import {FieldConfigFlag, Doc, and, or, present, ResultItem, SortDirection, token, mooTokenizer} from '../../src/yaii-types'
 import {Source} from 'pull-stream'
 import {AboutContent, ContactContent, Content, FeedId, Msg} from 'ssb-typescript/readme'
 import {as, count, first, from, reduce} from 'ix/asynciterable'
 import * as op from 'ix/asynciterable/operators'
 import {PullSourceAsyncIterator} from './pull-source-async-iterator'
-import {mooTokenizer} from '../../src/lib/analyzer/moo-tokenizer'
+
+
 import pify = require('pify')
 
 const pull = require('pull-stream')
@@ -200,7 +201,7 @@ test('Simple test of indexing', async t => {
 
     const messages = from(new PullSourceAsyncIterator(source)).pipe(
         op.filter(filterTypes),
-        op.take(50000),
+        op.take(5000),
         op.map((value, index) => {
             if (index % 30000 == 0) {
                 const end = new Date()

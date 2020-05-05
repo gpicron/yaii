@@ -1,6 +1,6 @@
 import test from 'ava'
-import {DocPackedArray} from '../../src/lib/doc-packed-array'
-import {Doc} from '../../src/yaii-types'
+import {DocPackedArray} from '../../src/lib/internal/datastructs/doc-packed-array'
+import {Doc} from '../../src/lib/api/base'
 
 test('basic depth 2', t => {
     const doc1 = {

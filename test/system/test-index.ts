@@ -3,19 +3,17 @@ import {MemoryInvertedIndex} from '../../src'
 import {
     all,
     and,
-    Doc,
-    FieldConfigFlag, not,
+    not,
     number,
     numberRange,
     or, present,
-    QueryOperator,
-    ResultItem,
-    SortClause,
-    SortDirection,
+    QueryOperator, ResultItem, SortClause, SortDirection,
     token
 } from '../../src/yaii-types'
 import {as, last, toArray, toSet} from 'ix/asynciterable'
 import * as op from 'ix/asynciterable/operators'
+import {Doc} from "../../src/lib/api/base"
+import {FieldConfigFlag} from "../../src/lib/api/config"
 
 interface TestContext {
     index: MemoryInvertedIndex

@@ -1,4 +1,5 @@
-import { Analyzer, FieldValue } from '../../yaii-types'
+import { Analyzer} from '../api/config'
+import {FieldValue} from "../api/base"
 
 const defaultStopWords: Record<string, boolean> = {
     '': true,

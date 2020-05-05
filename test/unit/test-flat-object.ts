@@ -1,5 +1,5 @@
 import test from 'ava'
-import { flattenObject } from '../../src/lib/utils'
+import { flattenObject } from '../../src/lib/internal/utils'
 import * as util from "util"
 
 test('basic', t => {
@@ -133,6 +133,6 @@ test('array in array', t => {
         'value.content.mentions.0': 'xj9',
         'value.content.mentions.1': '@GqsSW1pLJq5qUbJuDAtm7MwwOhpf+Ur6BfDH0kZKCJc=.ed25519',
         'value.signature': 'lPgWnIHCaw6m+K7MJvkBZKTPmh7knDPiUXmSCxqFCKHiQz6hXHO/duvuB2GihX+LCCISTOu00hWao6Xd8jpZBg==.sig.ed25519',
-        timestamp: 1585561328882.001
+        timestamp: 1585561328882
     })
 })

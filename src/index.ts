@@ -1,28 +1,17 @@
-import {
-    DEFAULT_INDEX_CONFIG,
-    Doc,
-    FieldConfig,
-    FieldConfigFlag,
-    FieldName,
-    FieldsConfig,
-    FieldStorableValue,
-    FieldValue,
-    FieldValues,
-    IndexConfig,
-    InvertedIndex,
-    Query,
-    ResultItem,
-    SortClause,
-    SortDirection, ValueGenerator
-} from './yaii-types'
-import {as, AsyncIterableX, from} from 'ix/asynciterable'
-import * as op from 'ix/asynciterable/operators'
+import {DEFAULT_INDEX_CONFIG, InvertedIndex} from './yaii-types'
+import {Doc, DocId, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem} from './lib/api/base'
+import {Query, SortClause, SortDirection} from './lib/api/query'
+import {FieldConfig, FieldConfigFlag, FieldsConfig, IndexConfig, ValueGenerator} from "./lib/api/config"
 
-import {RoaringBitmap32} from 'roaring'
-import {buildExpression, INTERNAL_FIELDS, numberToTerms, stringToTerm, TERM_FALSE, TERM_TRUE} from './lib/query-ir'
-import {IndexSegment} from './lib/index-segment'
 import {
-    DocId,
+    buildExpression,
+    numberToTerms,
+    stringToTerm,
+    TERM_FALSE,
+    TERM_TRUE
+} from './lib/internal/query-ir/query-ir'
+import {MutableSegment} from './lib/internal/mutable-segment'
+import {
     ExtFieldConfig,
     ExtFieldsIndexConfig,
     ExtIndexConfig,
@@ -31,11 +20,17 @@ import {
     opinionatedCompare,
     reverseCompareFunction,
     Termizer
-} from './lib/utils'
-import {BitmapAsyncIterable, cloneIfNotReusable} from './lib/bitmap'
-import {Heap} from 'typescript-collections'
+} from './lib/internal/utils'
+import {cloneIfNotReusable} from './lib/internal/datastructs/docid-async-iterable/singleton-docid-async-iterable'
+import {BitmapDocidAsyncIterable} from "./lib/internal/datastructs/docid-async-iterable/bitmap-docid-async-iterable"
+import {INTERNAL_FIELDS} from "./lib/internal/utils"
+
+import {as, AsyncIterableX, from} from 'ix/asynciterable'
+import * as op from 'ix/asynciterable/operators'
 import {isAsyncIterable, isIterable, isPromise} from 'ix/util/isiterable'
+import {Heap} from 'typescript-collections'
 import * as util from "util"
+
 
 const NULL_TOKENIZER: Termizer = () => {
     throw new Error('Bug, should never be called')
@@ -56,8 +51,8 @@ type IndexableDocPipelineMapFunction = (
 
 export class MemoryInvertedIndex implements InvertedIndex {
     readonly fieldsConfig: ExtFieldsIndexConfig
-    private segment: IndexSegment
-    private deleted = new RoaringBitmap32()
+    private segment: MutableSegment
+    private deleted = new BitmapDocidAsyncIterable()
     private indexConfig: ExtIndexConfig
     private fieldGenerators = new Array<{field: FieldName, valueGenerator: ValueGenerator}>()
     private allFieldGenerator?: IndexableDocPipelineMapFunction
@@ -133,7 +128,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
             }
         }
 
-        this.segment = new IndexSegment(fields, this.indexConfig)
+        this.segment = new MutableSegment(fields, this.indexConfig)
     }
 
     private valueTermizer(val: FieldValue) {
@@ -347,19 +342,17 @@ export class MemoryInvertedIndex implements InvertedIndex {
         }
 
         const resolveAndProjectSegment = async function*() {
-            let exp = await buildExpression(filter)
+            let exp = buildExpression(filter)
 
             const segmentLast = segment.next
 
             exp = exp.rewrite(segment)
 
-            let docIds: AsyncIterableX<number> = await exp.resolve(segment)
+            let docIds: AsyncIterable<number> = await exp.resolve(segment)
 
-            if (BitmapAsyncIterable.is(docIds)) {
+            if (BitmapDocidAsyncIterable.is(docIds)) {
                 docIds.removeRange(segmentLast)
-                docIds = cloneIfNotReusable(docIds).andNotInPlace(
-                    new BitmapAsyncIterable(deleted, false)
-                )
+                docIds = cloneIfNotReusable(docIds).andNotInPlace(deleted)
             } else {
                 docIds = as(docIds).pipe(
                     op.filter(e => e < segmentLast && !deleted.has(e))

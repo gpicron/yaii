@@ -1,6 +1,7 @@
-import { FieldConfigFlagSet, FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue } from '../yaii-types'
-import { Term } from './query-ir'
-import { arrayDestination, encodeUTF16toUTF8, stringSource } from 'utfx'
+import {FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue, isIntegerValue} from '../api/base'
+import {Term} from './query-ir/term-exp'
+import {arrayDestination, encodeUTF16toUTF8, stringSource} from 'utfx'
+import {FieldConfigFlagSet} from "../api/config"
 
 export type ExtFieldsIndexConfig = Record<FieldName, ExtFieldConfig>
 
@@ -17,8 +18,6 @@ export type ExtIndexConfig = {
     allFieldConfig: ExtFieldConfig
 }
 
-export type DocId = number // actually a 32-bit integer
-
 export function removeAll<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void {
     ;[...toBeRemovedSet].forEach(function(v) {
         originalSet.delete(v)
@@ -26,7 +25,6 @@ export function removeAll<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void 
 }
 
 export type ICompareFunction<T> = (a: T, b: T) => number
-export type IEqualFunction<T> = (a: T, b: T) => boolean
 
 export function reverseCompareFunction<T>(f: ICompareFunction<T>): ICompareFunction<T> {
     return (a: T, b: T) => -f(a, b)
@@ -90,6 +88,11 @@ export function flattenObject(ob: Record<string, unknown>): Record<FieldName, Fi
             }
         } else if (isFieldValue(obElement)) {
             toReturn[i] = obElement
+        } else if (typeof obElement === 'number') {
+            const floor = Math.floor(obElement)
+            if (isIntegerValue(floor)) {
+                toReturn[i] = floor
+            }
         }
     }
 
@@ -173,4 +176,10 @@ export function opinionatedCompare(a: FieldValue | undefined | Buffer, b: FieldV
         default:
             throw new Error('bug')
     }
+}
+
+export enum INTERNAL_FIELDS {
+    FIELDS = '£_FIELD',
+    ALL = '£_ALL',
+    SOURCE = '£_SOURCE'
 }

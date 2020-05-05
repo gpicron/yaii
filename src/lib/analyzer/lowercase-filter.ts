@@ -1,4 +1,5 @@
-import { Analyzer, FieldValue } from '../../yaii-types'
+import { Analyzer} from '../api/config'
+import { FieldValue } from "../api/base"
 
 export function lowercaseFilter(tokenizer: Analyzer): Analyzer {
     return (input: FieldValue) => {

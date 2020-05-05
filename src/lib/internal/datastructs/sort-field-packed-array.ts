@@ -1,8 +1,19 @@
 import { RoaringBitmap32 } from 'roaring'
-import { FieldValue } from '../yaii-types'
-import { DocId, ICompareFunction } from './utils'
+import {DocId, FieldValue} from '../../api/base'
+import { ICompareFunction } from '../utils'
 import ByteBuffer = require('bytebuffer')
 import Long = require('long')
+
+function compareOver(bb: ByteBuffer, aOffset: number, bOffset: number, over: number): number {
+    for (let i = 0; i < over; i++) {
+        const cmp = bb.readUint8(aOffset) - bb.readUint8(bOffset)
+        if (cmp != 0) return cmp
+        aOffset++
+        bOffset++
+    }
+
+    return 0
+}
 
 export class SortFieldPackedArray {
     private pointers = new RoaringBitmap32()
@@ -36,17 +47,6 @@ export class SortFieldPackedArray {
         this.pointers.add(this.store.offset)
     }
 
-    static compareOver(bb: ByteBuffer, aOffset: number, bOffset: number, over: number): number {
-        for (let i = 0; i < over; i++) {
-            const cmp = bb.readUint8(aOffset) - bb.readUint8(bOffset)
-            if (cmp != 0) return cmp
-            aOffset++
-            bOffset++
-        }
-
-        return 0
-    }
-
     comparator: ICompareFunction<DocId> = (a: DocId, b: DocId) => {
         let aPointer = this.pointers.select(a - 1) || 0
         let bPointer = this.pointers.select(b - 1) || 0
@@ -68,7 +68,7 @@ export class SortFieldPackedArray {
             case 0x03:
                 aPointer++
                 bPointer++
-                return SortFieldPackedArray.compareOver(s, aPointer, bPointer, 7)
+                return compareOver(s, aPointer, bPointer, 7)
             case 0x04:
                 const aEndPointer = this.pointers.select(a) || s.offset
                 const bEndPointer = this.pointers.select(b) || s.offset
@@ -77,7 +77,7 @@ export class SortFieldPackedArray {
                 const aLen = aEndPointer - aPointer
                 const bLen = bEndPointer - bPointer
 
-                const comp = SortFieldPackedArray.compareOver(s, aPointer, bPointer, Math.min(aLen, bLen))
+                const comp = compareOver(s, aPointer, bPointer, Math.min(aLen, bLen))
                 if (comp == 0) {
                     return aLen - bLen
                 } else {

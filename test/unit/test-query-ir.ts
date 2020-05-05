@@ -1,11 +1,10 @@
 import test from 'ava'
 import {
     addRange,
-    BooleanExpression,
-    rangeToExp,
-    TermExp
-} from '../../src/lib/query-ir'
+    rangeToExp} from '../../src/lib/internal/query-ir/query-ir'
 import { range, toArray } from 'ix/iterable'
+import {TermExp} from "../../src/lib/internal/query-ir/term-exp"
+import {BooleanExpression} from "../../src/lib/internal/query-ir/boolean-exp"
 
 test('numeric range exp level 0', t => {
     const exp = rangeToExp('f', BigInt(25), 0, 0, 5) as BooleanExpression

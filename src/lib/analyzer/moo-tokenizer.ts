@@ -1,5 +1,7 @@
-import { Analyzer, FieldValue } from '../../yaii-types'
+import {Analyzer} from '../api/config'
+import {FieldValue} from "../api/base"
 import * as moo from 'moo'
+
 
 export function mooTokenizer(rules: moo.Rules): Analyzer {
     const lexer = moo.compile(rules)

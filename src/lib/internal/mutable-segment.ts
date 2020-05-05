@@ -1,17 +1,21 @@
-import { Doc, FieldConfigFlag, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem } from '../yaii-types'
+import {DocId} from '../../yaii-types'
 import { AsyncIterableX, count, from } from 'ix/asynciterable'
 import { RoaringBitmap32 } from 'roaring'
 import * as op from 'ix/asynciterable/operators'
-import { DocId, ExtFieldConfig, ExtFieldsIndexConfig, ExtIndexConfig, ICompareFunction } from './utils'
-import { BitmapAsyncIterable, DocIdAsyncIterable, SingletonDocIdAsyncIterable } from './bitmap'
-import { IndexableDoc } from '../index'
-import { DocPackedArray } from './doc-packed-array'
-import { INTERNAL_FIELDS } from './query-ir'
-import { SortFieldPackedArray } from './sort_field_packed_array'
+import { ExtFieldConfig, ExtFieldsIndexConfig, ExtIndexConfig, ICompareFunction } from './utils'
+import { SingletonDocidAsyncIterable } from './datastructs/docid-async-iterable/singleton-docid-async-iterable'
+import { IndexableDoc } from '../..'
+import { DocPackedArray } from './datastructs/doc-packed-array'
+import { INTERNAL_FIELDS } from './utils'
+import { SortFieldPackedArray } from './datastructs/sort-field-packed-array'
+import {Doc, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem} from "../api/base"
+import {FieldConfigFlag} from "../api/config"
+import {DocidAsyncIterable} from "./datastructs/docid-async-iterable/docid-async-iterable"
+import {BitmapDocidAsyncIterable} from "./datastructs/docid-async-iterable/bitmap-docid-async-iterable"
 
 type B64Token = string
 
-export class IndexSegment {
+export class MutableSegment {
     private fieldsIndexConfig: ExtFieldsIndexConfig
     private indexConfig: ExtIndexConfig
     private perFieldMap: Map<FieldName, Map<B64Token, RoaringBitmap32 | number>> = new Map()
@@ -40,7 +44,7 @@ export class IndexSegment {
         }
     }
 
-    private setupStorageForField(field: FieldName, fConfig: ExtFieldConfig) {
+    private setupStorageForField(field: FieldName, fConfig: ExtFieldConfig): void {
         if (fConfig.flags & FieldConfigFlag.SEARCHABLE) {
             this.perFieldMap.set(field, new Map())
         }
@@ -57,27 +61,37 @@ export class IndexSegment {
     async add(docs: AsyncIterableX<IndexableDoc>): Promise<number> {
         const start = this.next
 
+        const docSourceStore = this.docSourceStore
+        const fieldsIndexConfig = this.fieldsIndexConfig
+        const indexConfig = this.indexConfig
+        const hasStoredFields = this.hasStoredFields
+        const perFieldValue = this.perFieldValue
+        const perFieldMap = this.perFieldMap
+        const perSortedFieldValue = this.perSortedFieldValue
+
         const insertDocument = async (doc: IndexableDoc, index: number) => {
             index += start
 
             const source = doc[INTERNAL_FIELDS.SOURCE]
-            if (source && this.docSourceStore) {
-                this.docSourceStore.add(source)
+
+            if (source && docSourceStore) {
+                docSourceStore.add(source)
             }
 
             const nonEmptyFields = new Map<string, boolean>()
             const storedFields: Doc = {}
 
+
             for (const [fieldName, fieldValue] of Object.entries(doc)) {
                 if (typeof fieldValue !== 'undefined') {
-                    let conf = this.fieldsIndexConfig[fieldName]
+                    let conf = fieldsIndexConfig[fieldName]
 
-                    if (!conf && this.indexConfig.defaultFieldConfig) {
-                        conf = this.indexConfig.defaultFieldConfig
+                    if (!conf && indexConfig.defaultFieldConfig) {
+                        conf = indexConfig.defaultFieldConfig
 
                         this.setupStorageForField(fieldName, conf)
 
-                        this.fieldsIndexConfig[fieldName] = conf
+                        fieldsIndexConfig[fieldName] = conf
                     }
 
                     if (conf) {
@@ -93,7 +107,7 @@ export class IndexSegment {
                             const tokens = conf.tokenizer(fieldValue)
 
                             if (tokens.length > 0) {
-                                const mapTree = this.perFieldMap.get(fieldName) as Map<B64Token, RoaringBitmap32 | number>
+                                const mapTree = perFieldMap.get(fieldName) as Map<B64Token, RoaringBitmap32 | number>
                                 for (const token of tokens) {
                                     const key = token.toString('base64')
                                     const map = mapTree.get(key)
@@ -114,7 +128,7 @@ export class IndexSegment {
                         if (conf.flags & FieldConfigFlag.SORT_OPTIMIZED && !Buffer.isBuffer(fieldValue)) {
                             const val = Array.isArray(fieldValue) ? fieldValue[0] : fieldValue
 
-                            const array = this.perSortedFieldValue.get(fieldName) as SortFieldPackedArray
+                            const array = perSortedFieldValue.get(fieldName) as SortFieldPackedArray
                             array.add(val)
                         }
                     }
@@ -122,7 +136,7 @@ export class IndexSegment {
             }
             // index non empty fields list
             if (nonEmptyFields.size > 0) {
-                const mapTree = this.perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<B64Token, RoaringBitmap32>
+                const mapTree = perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<B64Token, RoaringBitmap32>
 
                 for (const key of nonEmptyFields.keys()) {
                     const map = mapTree.get(key)
@@ -134,8 +148,8 @@ export class IndexSegment {
                 }
             }
 
-            if (this.hasStoredFields && storedFields) {
-                this.perFieldValue.add(storedFields)
+            if (hasStoredFields && storedFields) {
+                perFieldValue.add(storedFields)
             }
         }
 
@@ -221,16 +235,16 @@ export class IndexSegment {
         }
     }
 
-    get(field: FieldName, term: Buffer): DocIdAsyncIterable {
+    get(field: FieldName, term: Buffer): DocidAsyncIterable {
         const fieldMaps = this.perFieldMap.get(field)
         const map = fieldMaps?.get(term.toString('base64'))
 
         if (typeof map === 'number') {
-            return new SingletonDocIdAsyncIterable(map)
+            return new SingletonDocidAsyncIterable(map)
         } else if (map) {
-            return new BitmapAsyncIterable(map, false)
+            return new BitmapDocidAsyncIterable(false, map)
         } else {
-            return BitmapAsyncIterable.EMPTY_MAP
+            return BitmapDocidAsyncIterable.EMPTY_MAP
         }
     }
 
