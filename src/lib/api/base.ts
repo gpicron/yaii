@@ -58,5 +58,12 @@ export enum QueryOperator {
     OR = 'OR',
     AND = 'AND',
     NOT = 'NOT',
-    HAS_FIELD = 'HAS_FIELD'
+    HAS_FIELD = 'HAS_FIELD',
+    BUCKET = 'BUCKET'
+}
+
+export enum AggregationName {
+    LAST = 'LAST',
+    FIRST = 'FIRST',
+    COUNT = 'FIRST',
 }

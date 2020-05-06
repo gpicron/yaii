@@ -24,7 +24,7 @@ import * as op from 'ix/asynciterable/operators'
 import {isAsyncIterable, isIterable, isPromise} from 'ix/util/isiterable'
 import * as util from "util"
 import {Term} from "./lib/internal/query-ir/term-exp"
-import {Aggregation, isAggregation} from "./lib/api/aggregation"
+import {Aggregation} from "./lib/api/aggregation"
 import {SortedDocidAsyncIterable} from "./lib/internal/datastructs/docid-async-iterable/sorted-docid-async-iterable"
 
 
@@ -235,14 +235,26 @@ export class MemoryInvertedIndex implements InvertedIndex {
         return this.segment.add(indexables)
     }
 
+
+    aggregateQuery(
+            filter: Query,
+            aggregations: Array<Aggregation>,
+            sort?: Array<SortClause>) {
+        console.log(filter)
+        console.log(aggregations)
+        console.log(sort)
+
+    }
+
+
     query<T extends Doc>(
         filter: Query,
         sort?: Array<SortClause>,
         limit?: number,
-        projection?: Array<FieldName> | Array<Aggregation>
+        projection?: Array<FieldName>
     ): AsyncIterableX<ResultItem<T>> {
-        let actualProjection: Array<FieldName> | Array<Aggregation>;
-        let aggregationQuery = false
+        let actualProjection: Array<FieldName> ;
+
         if (projection == undefined) {
             if (this.indexConfig.storeSourceDoc) {
                 actualProjection = [INTERNAL_FIELDS.SOURCE]
@@ -252,12 +264,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
                     .map(e => e[0])
             }
         } else {
-            aggregationQuery = projection.every(isAggregation)
-            if (projection.every((it: unknown) => typeof it === 'string') || aggregationQuery) {
-                actualProjection = projection
-            } else {
-                throw new Error("Invalid set of projections")
-            }
+            actualProjection = projection
         }
         
         const segment = this.segment
@@ -293,7 +300,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
 
             let decount = limit || Number.MAX_SAFE_INTEGER
 
-            for await (const doc of segment.project(docIds, actualProjection as string[])) {
+            for await (const doc of segment.project(docIds, actualProjection)) {
                 yield doc
                 if (--decount == 0) return
             }
