@@ -12,15 +12,13 @@ import {Doc, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem}
 import {FieldConfigFlag} from "../api/config"
 import {DocidAsyncIterable} from "./datastructs/docid-async-iterable/docid-async-iterable"
 import {BitmapDocidAsyncIterable} from "./datastructs/docid-async-iterable/bitmap-docid-async-iterable"
-import {Term} from "./query-ir/term-exp"
+import {Term, TermExp} from "./query-ir/term-exp"
 import {stringToTerm} from "./query-ir/query-ir"
-
-type B64Token = string
 
 export class MutableSegment {
     private fieldsIndexConfig: ExtFieldsIndexConfig
     private indexConfig: ExtIndexConfig
-    private perFieldMap: Map<FieldName, Map<B64Token, RoaringBitmap32 | number>> = new Map()
+    private perFieldMap: Map<FieldName, Map<Term, RoaringBitmap32 | number>> = new Map()
     private perFieldValue = new DocPackedArray()
     private docSourceStore: DocPackedArray | undefined
     private perSortedFieldValue: Map<FieldName, SortFieldPackedArray> = new Map()
@@ -109,7 +107,7 @@ export class MutableSegment {
                             const terms = conf.tokenizer(fieldValue)
 
                             if (terms.length > 0) {
-                                const mapTree = perFieldMap.get(fieldName) as Map<B64Token, RoaringBitmap32 | number>
+                                const mapTree = perFieldMap.get(fieldName) as Map<Term, RoaringBitmap32 | number>
                                 for (const term of terms) {
                                     const key = term
                                     const map = mapTree.get(key)
@@ -138,7 +136,7 @@ export class MutableSegment {
             }
             // index non empty fields list
             if (nonEmptyFields.size > 0) {
-                const mapTree = perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<B64Token, RoaringBitmap32>
+                const mapTree = perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<Term, RoaringBitmap32>
 
                 for (const key of nonEmptyFields.keys()) {
                     const term = stringToTerm(key)
@@ -254,4 +252,9 @@ export class MutableSegment {
     getOptimizedComparator(fieldName: FieldName): ICompareFunction<DocId> | undefined {
         return this.perSortedFieldValue.get(fieldName)?.comparator
     }
+
+    mayMatch(term: TermExp): boolean {
+        return this.perFieldMap.get(term.field)?.has(term.term) !== undefined
+    }
+
 }

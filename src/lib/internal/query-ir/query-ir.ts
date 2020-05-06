@@ -15,6 +15,7 @@ import {ALL_EXP, Exp, NoneExp} from "./base"
 import {Term, TermExp} from "./term-exp"
 import {BooleanExpression} from "./boolean-exp"
 import {INTERNAL_FIELDS} from "../utils"
+import {MutableSegment} from "../mutable-segment"
 
 enum TermPrefix {
     STRING = "0",
@@ -96,7 +97,7 @@ function fieldNameOrAll(q: LeafQuery): FieldName | INTERNAL_FIELDS.ALL {
     return q.field || INTERNAL_FIELDS.ALL
 }
 
-export function buildExpression(query: Query): Exp {
+export function buildExpression(query: Query, segment: MutableSegment): Exp {
     switch (query.operator) {
         case QueryOperator.ALL:
             return ALL_EXP
@@ -113,30 +114,34 @@ export function buildExpression(query: Query): Exp {
                 } else if (typeof value === 'boolean') {
                     return new TermExp(fieldNameOrAll(q), value ? TERM_TRUE : TERM_FALSE)
                 }
-            }).filter(it => typeof it !== 'undefined') as Exp[]
+            }).filter(it => typeof it !== 'undefined' && segment.mayMatch(it)) as Exp[]
 
-            return new BooleanExpression(
-                exps
-            )
+            if (exps.length == 0) {
+                return  new NoneExp()
+            } else if (exps.length == 1) {
+                return exps[0]
+            } else {
+                return new BooleanExpression(exps)
+            }
 
         }
         case QueryOperator.AND: {
             const q = query as AndQuery
-            const operands = q.operands.map(buildExpression)
+            const operands = q.operands.map(it => buildExpression(it, segment))
 
             return new BooleanExpression(undefined, operands)
         }
         case QueryOperator.OR: {
             const q = query as OrQuery
 
-            const operands = q.operands.map(buildExpression)
+            const operands = q.operands.map(it => buildExpression(it, segment))
 
             return new BooleanExpression(operands)
         }
         case QueryOperator.NOT: {
             const q = query as NotQuery
 
-            return new BooleanExpression(undefined, undefined, [buildExpression(q.operand)])
+            return new BooleanExpression(undefined, undefined, [buildExpression(q.operand, segment)])
         }
         case QueryOperator.NUMBER: {
             const q = query as NumberQuery
@@ -144,7 +149,12 @@ export function buildExpression(query: Query): Exp {
             const terms = numberToTerms(q.value)
             const termExps = [new TermExp(fieldName, terms[0]), new TermExp(fieldName, terms[8])]
 
-            return new BooleanExpression(undefined, termExps)
+            if (segment.mayMatch(termExps[0]) && segment.mayMatch(termExps[1])) {
+                return new BooleanExpression(undefined, termExps)
+            } else {
+                return new NoneExp()
+            }
+
         }
 
         case QueryOperator.NUMBER_RANGE: {
@@ -166,7 +176,8 @@ export function buildExpression(query: Query): Exp {
                 maxExclusive = maxExclusive.add(NUMBER_SHIFT)
             }
 
-            const allterms = addRange(q.field, minInclusive, maxExclusive, 0)
+            const allterms = addRange(q.field, minInclusive, maxExclusive, 0, segment)
+
 
             return allterms.length == 0 ? new NoneExp() : new BooleanExpression(allterms)
         }
@@ -177,36 +188,53 @@ export function buildExpression(query: Query): Exp {
 
         case QueryOperator.TOKEN_RANGE:
         case QueryOperator.TEXT_CONTAINS:
+        default:
             throw new Error('Not yet implemented.')
     }
 }
 
-export function rangeToExp(field: FieldName, fromRange: Long, level: number, fromRem: number, toRem: number): Exp {
+export function rangeToExp(field: FieldName, fromRange: Long, level: number, fromRem: number, toRem: number, segment: MutableSegment): Exp {
     if (level == 0) {
         const rangeTerm = extractNumberTerms(fromRange.shiftLeft(6))[8]
+        const rangeTermExp = new TermExp(field, rangeTerm)
 
-        const remTerms = new Array<Exp>()
+        if (segment.mayMatch(rangeTermExp)) {
+            const remTerms = new Array<Exp>()
 
-        for (let i = fromRem; i < toRem; i++) {
-            const p = TermPrefix.NUMBER_L0 + ENCODING_DIGITS[i]
-            remTerms.push(new TermExp(field, p))
+            for (let i = fromRem; i < toRem; i++) {
+                const p = TermPrefix.NUMBER_L0 + ENCODING_DIGITS[i]
+                const termExp = new TermExp(field, p)
+
+                if (segment.mayMatch(termExp)) {
+                    remTerms.push(termExp)
+                }
+            }
+
+            if (remTerms.length > 0) {
+                return new BooleanExpression(remTerms, [rangeTermExp])
+            }
         }
-
-        return new BooleanExpression(remTerms, [new TermExp(field, rangeTerm)])
     } else {
         let rangeTerm = extractNumberTerms(fromRange.shiftLeft((level+1) * 6))[9-level]
         rangeTerm = rangeTerm.substring(0, rangeTerm.length-1)
 
         const terms = new Array<Exp>()
         for (let range = fromRem; range < toRem; range++) {
-            terms.push(new TermExp(field, rangeTerm + ENCODING_DIGITS[range]))
-        }
+            const termExp = new TermExp(field, rangeTerm + ENCODING_DIGITS[range])
 
-        return new BooleanExpression(terms)
+            if (segment.mayMatch(termExp)) {
+                terms.push(termExp)
+            }
+        }
+        if (terms.length > 0) {
+            return new BooleanExpression(terms)
+        }
     }
+
+    return new NoneExp()
 }
 
-export function addRange(field: FieldName, from: Long, to: Long, level: number): Exp[] {
+export function addRange(field: FieldName, from: Long, to: Long, level: number, segment: MutableSegment): Exp[] {
     let terms = new Array<Exp>()
     if (from.gte(to)) return terms
 
@@ -217,20 +245,22 @@ export function addRange(field: FieldName, from: Long, to: Long, level: number):
     const toRem = to.mod(precision).toNumber()
 
     if (fromRem == 0 && fromRange.equals(toRange)) {
-        terms = terms.concat(addRange(field, fromRange, fromRange.add(1), level + 1))
+        terms = terms.concat(addRange(field, fromRange, fromRange.add(1), level + 1, segment))
     } else {
         if (fromRange.equals(toRange)) {
-            terms.push(rangeToExp(field, fromRange, level, fromRem, toRem))
+            terms.push(rangeToExp(field, fromRange, level, fromRem, toRem, segment))
         } else {
-            terms.push(rangeToExp(field, fromRange, level, fromRem, 64))
+            terms.push(rangeToExp(field, fromRange, level, fromRem, 64, segment))
         }
     }
 
-    terms = terms.concat(addRange(field, fromRange.add(1), toRange, level + 1))
+    terms = terms.concat(addRange(field, fromRange.add(1), toRange, level + 1, segment))
 
     if (toRem != 0 && !fromRange.equals(toRange)) {
-        terms.push(rangeToExp(field, toRange, level, 0, toRem))
+        terms.push(rangeToExp(field, toRange, level, 0, toRem, segment))
     }
 
-    return terms
+    return terms.filter(it => !(it instanceof NoneExp))
 }
+
+

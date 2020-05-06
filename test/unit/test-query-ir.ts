@@ -181,9 +181,15 @@ test('number to terms', t => {
 
 })
 
+class MockSegment {
+    mayMatch(term: TermExp): boolean {
+        return true
+    }
+}
 
 test('numeric range exp level 0', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 0, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 0, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -197,7 +203,8 @@ test('numeric range exp level 0', t => {
 })
 
 test('numeric range exp level 1 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 1, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 1, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -212,7 +219,8 @@ test('numeric range exp level 1 ', t => {
 })
 
 test('numeric range exp level 2 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 2, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 2, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -227,7 +235,8 @@ test('numeric range exp level 2 ', t => {
 })
 
 test('numeric range exp level 3 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 3, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 3, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -242,7 +251,8 @@ test('numeric range exp level 3 ', t => {
 })
 
 test('numeric range exp level 4 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 4, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 4, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -257,7 +267,8 @@ test('numeric range exp level 4 ', t => {
 })
 
 test('numeric range exp level 5 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 5, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 5, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -272,7 +283,8 @@ test('numeric range exp level 5 ', t => {
 })
 
 test('numeric range exp level 6 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 6, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 6, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -287,7 +299,8 @@ test('numeric range exp level 6 ', t => {
 })
 
 test('numeric range exp level 7 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 7, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 7, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -302,7 +315,8 @@ test('numeric range exp level 7 ', t => {
 })
 
 test('numeric range exp level 8 ', t => {
-    const exp = rangeToExp('f', Long.fromNumber(25), 8, 0, 5) as BooleanExpression
+    // @ts-ignore
+    const exp = rangeToExp('f', Long.fromNumber(25), 8, 0, 5, new MockSegment()) as BooleanExpression
 
     const shoulds = exp.should
         .map(te => (te as TermExp).term)
@@ -311,11 +325,13 @@ test('numeric range exp level 8 ', t => {
 })
 
 test('addRange 1 bucket at level 0', t => {
-    const exp = addRange('f', Long.fromNumber(25), Long.fromNumber(26), 0)
+    // @ts-ignore
+    const exp = addRange('f', Long.fromNumber(25), Long.fromNumber(26), 0, new MockSegment())
 
     t.is(exp.toString(), '((f:1N) +f:2++++++++ )')
 
-    const exp2 = addRange('f', Long.fromNumber(25), Long.fromNumber(29), 0)
+    // @ts-ignore
+    const exp2 = addRange('f', Long.fromNumber(25), Long.fromNumber(29), 0, new MockSegment())
 
     t.is(
         exp2.toString(),
@@ -324,7 +340,8 @@ test('addRange 1 bucket at level 0', t => {
 })
 
 test('addRange 2 buckets at level 0', t => {
-    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65), 0)
+    // @ts-ignore
+    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65), 0, new MockSegment())
 
     t.is(
         exp.toString(),
@@ -333,7 +350,8 @@ test('addRange 2 buckets at level 0', t => {
 })
 
 test('addRange full overlap 1 bucket at level 0', t => {
-    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64), 0)
+    // @ts-ignore
+    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64), 0, new MockSegment())
 
     const actual = exp.map(e => e.toString())
     const expected = [
@@ -348,7 +366,8 @@ test('addRange full overlap 1 bucket at level 0', t => {
 const ENCODING_DIGITS = "+/0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 test('addRange full overlap 1 bucket at level 1', t => {
-    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64 * 63), 0)
+    // @ts-ignore
+    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64 * 63), 0, new MockSegment())
 
     const actual = exp.map(e => e.toString())
     const expected = [
@@ -365,7 +384,8 @@ test('addRange full overlap 1 bucket at level 1', t => {
 })
 
 test('addRange full overlap 1 bucket+1 at level 1', t => {
-    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64 * 64), 0)
+    // @ts-ignore
+    const exp = addRange('f', Long.fromNumber(63), Long.fromNumber(65 + 64 * 64), 0, new MockSegment())
 
     const actual = exp.map(e => e.toString())
     const expected = [

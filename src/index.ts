@@ -342,7 +342,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
         }
 
         const resolveAndProjectSegment = async function*() {
-            let exp = buildExpression(filter)
+            let exp = buildExpression(filter, segment)
 
             const segmentLast = segment.next
 
