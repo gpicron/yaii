@@ -21,7 +21,10 @@ import {
     reverseCompareFunction,
     Termizer
 } from './lib/internal/utils'
-import {cloneIfNotReusable} from './lib/internal/datastructs/docid-async-iterable/singleton-docid-async-iterable'
+import {
+    cloneIfNotReusable,
+    SingletonDocidAsyncIterable
+} from './lib/internal/datastructs/docid-async-iterable/singleton-docid-async-iterable'
 import {BitmapDocidAsyncIterable} from "./lib/internal/datastructs/docid-async-iterable/bitmap-docid-async-iterable"
 import {INTERNAL_FIELDS} from "./lib/internal/utils"
 
@@ -30,6 +33,7 @@ import * as op from 'ix/asynciterable/operators'
 import {isAsyncIterable, isIterable, isPromise} from 'ix/util/isiterable'
 import {Heap} from 'typescript-collections'
 import * as util from "util"
+import {Term} from "./lib/internal/query-ir/term-exp"
 
 
 const NULL_TOKENIZER: Termizer = () => {
@@ -131,7 +135,7 @@ export class MemoryInvertedIndex implements InvertedIndex {
         this.segment = new MutableSegment(fields, this.indexConfig)
     }
 
-    private valueTermizer(val: FieldValue) {
+    private valueTermizer(val: FieldValue): Term[] {
         if (typeof val === 'string') {
             return [stringToTerm(val)]
         } else if (typeof val === 'boolean') {
@@ -148,27 +152,23 @@ export class MemoryInvertedIndex implements InvertedIndex {
             if (analyzer) {
                 termizer = input => {
                     if (Array.isArray(input)) {
-                        const analyzerResult: FieldValue[] = new Array<
-                            FieldValue
-                        >().concat(...input.map(analyzer))
-                        const termizerResult: Buffer[][] = analyzerResult.map(
-                            this.valueTermizer
-                        )
-                        return new Array<Buffer>().concat(...termizerResult)
+                        const analyzerResult: FieldValue[] = new Array<FieldValue>().concat(...input.map(analyzer))
+                        const termizerResult: Term[][] = analyzerResult.map(this.valueTermizer)
+                        return new Array<Term>().concat(...termizerResult)
                     } else {
-                        const termizerResult: Buffer[][] = analyzer(input).map(
+                        const termizerResult: Term[][] = analyzer(input).map(
                             this.valueTermizer
                         )
-                        return new Array<Buffer>().concat(...termizerResult)
+                        return new Array<Term>().concat(...termizerResult)
                     }
                 }
             } else {
                 termizer = input => {
                     if (Array.isArray(input)) {
-                        const termizerResult: Buffer[][] = input.map(
+                        const termizerResult: Term[][] = input.map(
                             this.valueTermizer
                         )
-                        return new Array<Buffer>().concat(...termizerResult)
+                        return new Array<Term>().concat(...termizerResult)
                     } else {
                         return this.valueTermizer(input)
                     }
@@ -348,11 +348,10 @@ export class MemoryInvertedIndex implements InvertedIndex {
 
             exp = exp.rewrite(segment)
 
-            let docIds: AsyncIterable<number> = await exp.resolve(segment)
+            let docIds: AsyncIterableX<number> = cloneIfNotReusable(await exp.resolve(segment))
 
-            if (BitmapDocidAsyncIterable.is(docIds)) {
-                docIds.removeRange(segmentLast)
-                docIds = cloneIfNotReusable(docIds).andNotInPlace(deleted)
+            if (BitmapDocidAsyncIterable.is(docIds) || SingletonDocidAsyncIterable.is(docIds)) {
+                docIds = cloneIfNotReusable(docIds).removeRange(segmentLast).andNotInPlace(deleted)
             } else {
                 docIds = as(docIds).pipe(
                     op.filter(e => e < segmentLast && !deleted.has(e))

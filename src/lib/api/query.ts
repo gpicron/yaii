@@ -1,17 +1,4 @@
-import {FieldName, IntegerValue, TokenValue} from './base'
-
-export enum QueryOperator {
-    TOKEN = 'TOKEN',
-    TOKEN_RANGE = 'TOKEN_RANGE',
-    NUMBER = 'NUMBER',
-    NUMBER_RANGE = 'NUMBER_RANGE',
-    TEXT_CONTAINS = 'TEXT_CONTAINS',
-    ALL = 'ALL',
-    OR = 'OR',
-    AND = 'AND',
-    NOT = 'NOT',
-    HAS_FIELD = 'HAS_FIELD'
-}
+import {FieldName, IntegerValue, QueryOperator, TokenValue} from './base'
 
 export interface Query {
     readonly operator: QueryOperator
@@ -33,7 +20,7 @@ interface RangeMatchLeafQuery<T> extends LeafQuery {
     readonly maxInclusive: boolean
 }
 
-export interface TokenQuery extends ExactMatchLeafQuery<TokenValue> {
+export interface TokenQuery extends ExactMatchLeafQuery<TokenValue | TokenValue[]> {
     readonly operator: QueryOperator.TOKEN
 }
 

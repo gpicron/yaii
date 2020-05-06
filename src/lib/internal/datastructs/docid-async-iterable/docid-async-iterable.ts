@@ -1,10 +1,10 @@
 
-import {BitmapDocidAsyncIterable, orManyBitmap} from "./bitmap-docid-async-iterable"
+import {BitmapDocidAsyncIterable} from "./bitmap-docid-async-iterable"
 import {DocId} from "../../../api/base"
 import {SingletonDocidAsyncIterable} from "./singleton-docid-async-iterable"
 
 export declare abstract class DocidAsyncIterable implements AsyncIterable<DocId> {
-    canUpdateInPlace: boolean
+    readonly mutable: boolean
     readonly size: number
 
     clone(): BitmapDocidAsyncIterable
@@ -32,7 +32,7 @@ export function orMany(opers: DocidAsyncIterable[]): BitmapDocidAsyncIterable {
     let result: BitmapDocidAsyncIterable | undefined
     const maps = opers.filter(BitmapDocidAsyncIterable.is)
     if (maps.length > 0) {
-        result = orManyBitmap(maps)
+        result = BitmapDocidAsyncIterable.orManyBitmap(maps)
     }
     if (maps.length < opers.length) {
         if (!result) result = new BitmapDocidAsyncIterable()

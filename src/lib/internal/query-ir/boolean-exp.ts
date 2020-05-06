@@ -3,8 +3,12 @@ import {MutableSegment} from "../mutable-segment"
 import {removeAll} from "../utils"
 import {DocidAsyncIterable, orMany} from "../datastructs/docid-async-iterable/docid-async-iterable"
 import {BitmapDocidAsyncIterable} from "../datastructs/docid-async-iterable/bitmap-docid-async-iterable"
-import {SingletonDocidAsyncIterable} from "../datastructs/docid-async-iterable/singleton-docid-async-iterable"
-import {RoaringBitmap32} from "roaring"
+import {
+    cloneIfNotReusable,
+    SingletonDocidAsyncIterable
+} from "../datastructs/docid-async-iterable/singleton-docid-async-iterable"
+
+
 
 export class BooleanExpression implements Exp {
     should: Array<Exp>
@@ -57,12 +61,10 @@ export class BooleanExpression implements Exp {
         }
 
         // if only 1 should, become a must
-        let mustToAnalyze: Array<Exp>
-        if (should.size == 1 && this.isShouldOnly()) {
-            mustToAnalyze = Array.from(should.values())
+        const mustToAnalyze: Array<Exp> = Array.from(this.must)
+        if (should.size == 1) {
+            mustToAnalyze.push(should.values().next().value as Exp)
             should.clear()
-        } else {
-            mustToAnalyze = this.must
         }
 
         // rewrite must clauses, remove duplicates and bubble up when possible
@@ -145,6 +147,7 @@ export class BooleanExpression implements Exp {
 
         for await (const m of resolvedMust) {
             if (BitmapDocidAsyncIterable.is(m) || SingletonDocidAsyncIterable.is(m)) {
+                if (m.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
                 mapMusts.push(m)
             } else {
                 lazyMusts.push(m)
@@ -158,7 +161,7 @@ export class BooleanExpression implements Exp {
 
         for await (const m of resolvedMustNots) {
             if (BitmapDocidAsyncIterable.is(m) || SingletonDocidAsyncIterable.is(m)) {
-                mapMustNots.push(m)
+                if (m.size > 0) mapMustNots.push(m)
             } else {
                 lazyMustNots.push(m)
             }
@@ -171,11 +174,7 @@ export class BooleanExpression implements Exp {
             if (mapMusts.length > 0) {
                 mapMusts.sort((a, b) => a.size - b.size)
                 const first = mapMusts.shift() as DocidAsyncIterable
-                if (first.canUpdateInPlace) {
-                    must = first as BitmapDocidAsyncIterable
-                } else {
-                    must = first.clone()
-                }
+                must = cloneIfNotReusable(first)
 
                 // first, and(all must bitmaps)
                 for (const nextMust of mapMusts) {
@@ -193,7 +192,7 @@ export class BooleanExpression implements Exp {
                 if (must == undefined) {
                     const first = lazyMusts.shift() as DocidAsyncIterable
 
-                    must = new BitmapDocidAsyncIterable(true, new RoaringBitmap32())
+                    must = new BitmapDocidAsyncIterable()
                     for await (const index of first) must.add(index)
                 }
 
@@ -251,10 +250,12 @@ export class BooleanExpression implements Exp {
                 const bitmaps = new Array<BitmapDocidAsyncIterable>()
 
                 for (const didai of allShouldBitmaps) {
-                    if (BitmapDocidAsyncIterable.is(didai)) {
-                        bitmaps.push(didai)
-                    } else {
-                        singletons.push(didai as SingletonDocidAsyncIterable)
+                    if (didai.size > 0) {
+                        if (BitmapDocidAsyncIterable.is(didai)) {
+                            bitmaps.push(didai)
+                        } else {
+                            singletons.push(didai as SingletonDocidAsyncIterable)
+                        }
                     }
                 }
 
@@ -262,7 +263,7 @@ export class BooleanExpression implements Exp {
                 if (bitmaps.length > 0) {
                     result = orMany(bitmaps)
                 } else {
-                    result = new BitmapDocidAsyncIterable(true, new RoaringBitmap32())
+                    result = new BitmapDocidAsyncIterable()
                 }
 
                 for (const singleton of singletons) {

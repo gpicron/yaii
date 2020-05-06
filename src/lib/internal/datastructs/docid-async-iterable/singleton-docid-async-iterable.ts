@@ -5,7 +5,7 @@ import {BitmapDocidAsyncIterable} from "./bitmap-docid-async-iterable"
 import {DocId} from "../../../api/base"
 
 export class SingletonDocidAsyncIterable extends AsyncIterableX<number> implements DocidAsyncIterable {
-    readonly canUpdateInPlace: boolean = false
+    readonly mutable: boolean = false
     readonly size: number = 1
     readonly index: number
 
@@ -55,7 +55,7 @@ export class SingletonDocidAsyncIterable extends AsyncIterableX<number> implemen
     }
 }
 
-export function cloneIfNotReusable(value: BitmapDocidAsyncIterable): BitmapDocidAsyncIterable {
-    if (!value.canUpdateInPlace) return value.clone()
-    return value
+export function cloneIfNotReusable<T extends DocidAsyncIterable>(value: DocidAsyncIterable): BitmapDocidAsyncIterable {
+    if (!value.mutable) return value.clone()
+    return value as BitmapDocidAsyncIterable
 }

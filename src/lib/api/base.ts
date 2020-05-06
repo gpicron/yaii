@@ -47,3 +47,16 @@ export interface ResultItem<T extends Doc> extends StoredFields {
     _id: DocId
     _source?: T
 }
+
+export enum QueryOperator {
+    TOKEN = 'TOKEN',
+    TOKEN_RANGE = 'TOKEN_RANGE',
+    NUMBER = 'NUMBER',
+    NUMBER_RANGE = 'NUMBER_RANGE',
+    TEXT_CONTAINS = 'TEXT_CONTAINS',
+    ALL = 'ALL',
+    OR = 'OR',
+    AND = 'AND',
+    NOT = 'NOT',
+    HAS_FIELD = 'HAS_FIELD'
+}

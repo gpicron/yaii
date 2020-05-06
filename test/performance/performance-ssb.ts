@@ -18,6 +18,7 @@ const Config = require('ssb-config/inject')
 const ssbClient = require('ssb-client')
 const ssbKeys = require('ssb-keys')
 const util = require('util')
+import { StopWatch } from 'stopwatch-node';
 
 interface TestContext {
     server: SSBServer
@@ -190,9 +191,6 @@ test('Simple test of indexing', async t => {
 
     let counter = 1
 
-    let start = new Date()
-    const startAll = start
-
     const filterTypes = (msg: Msg) => {
         const type = msg.value.content?.type
         // @ts-ignore
@@ -201,40 +199,32 @@ test('Simple test of indexing', async t => {
 
     const messages = from(new PullSourceAsyncIterator(source)).pipe(
         op.filter(filterTypes),
-        op.take(5000),
-        op.map((value, index) => {
-            if (index % 30000 == 0) {
-                const end = new Date()
-                console.log(
-                    'progress:',
-                    index,
-                    '\t',
-                    (end.getTime() - start.getTime()) / 1000,
-                    'seconds'
-                )
-                start = end
+        op.take(500000),
+        op.tap((value) => {
+            if (counter++ % 50000 == 0) {
+                console.log('progress:', counter)
             }
-            return value
         })
     )
+
+    const sw = new StopWatch('sw')
+    sw.start("indexing")
 
     // @ts-ignore
     const indexed = await index.add(messages)
 
-    const end = new Date()
-    console.log('indexed:' + indexed)
-    console.log(
-        'total duration',
-        '\t',
-        (end.getTime() - startAll.getTime()) / 1000,
-        'seconds'
-    )
+    sw.stop()
+
+    console.log('indexed:', indexed)
+
     printMemoryUsage()
 
     //console.log(index.listAllKnownField())
 
     console.log('--------------------------------------------------')
     // look for all 'about' messages from one identity, gather last names
+
+    sw.start("look for all 'about' messages from one identity, gather last names")
 
     const profileId = await t.context.server.whoami().id
 
@@ -260,11 +250,13 @@ test('Simple test of indexing', async t => {
             return previousValue
         }, [])
 
+    sw.stop()
 
     console.log("last names used: ", returnedResult)
 
     console.log('--------------------------------------------------')
     // count msgs group by type where the profile id appears in any field
+    sw.start("count msgs group by type where the profile id appears in any field")
 
     const allReferencing = index.query<Msg<Content>>(and(
         present('value.content.type'),
@@ -298,8 +290,12 @@ test('Simple test of indexing', async t => {
         log(x)
     }
 
+    sw.stop()
+
     console.log('--------------------------------------------------')
     // building a social network data structure from me with classic async coding way demo
+
+    sw.start("building a social network data structure from me with classic async coding way demo")
 
     const identities = new Map<FeedId, Network>()
 
@@ -352,6 +348,8 @@ test('Simple test of indexing', async t => {
         }
     }
 
+    sw.stop()
+
     log(identities.get(profileId))
     log(identities)
 
@@ -359,6 +357,8 @@ test('Simple test of indexing', async t => {
     console.log('--------------------------------------------------')
 
     // a more efficient approach than recreating a new structure to hold reduced states while perfectly viable performance wise
+
+    sw.start("a more efficient approach than recreating a new structure to hold reduced states while perfectly viable performance wise")
 
     async function getName(id: FeedId) {
         const iter = index.query<Msg<AboutContent>>(and(
@@ -370,41 +370,58 @@ test('Simple test of indexing', async t => {
                 {field:"TDA", dir: SortDirection.DESCENDING}
             ], 1)[Symbol.asyncIterator]()
 
-        return iter.next().then(r => r.value?._source.value?.content?.name)
+        return iter.next().then(r => r.value?._source.value?.content?.name || "NO NAME")
     }
 
-    async function* getFollowed(id: FeedId) {
-        const iter = index.query<Msg<ContactContent>>(and(
+    function getFollowed(id: FeedId) {
+
+        return index.query<Msg<ContactContent>>(and(
             token('contact', 'value.content.type'),
             token(id, 'value.author'),
             or(present('value.content.following'), present('value.content.blocking'))
         ),
             [{field:'value.timestamp', dir:SortDirection.DESCENDING}]
         ).pipe(
-            op.tap(log),
+           // op.tap(log),
             op.map(r => r._source as Msg<ContactContent>),
             op.groupBy(
                 msg => msg.value.content.contact,
-                msg => msg.value
-                )
+                msg => msg.value.content
+                ),
+            op.map(async group => {
+                return {
+                    id: group.key,
+                    following: await first(group).then(it => it?.following)
+                }
+            }),
+            // @ts-ignore
+            op.filter(it => it.id && it.following === true),
+            op.map(async (it :{ id:string })  => {
+                return {
+                    id: it.id,
+                    name: await getName(it.id)
+                }
+            })
         )
 
-        for await (const result of iter) {
-            const lastUpdate = await first(result)
-            if (result.key && lastUpdate?.content.following === true) {
-                yield result.key
-            }
-        }
     }
+
+
 
 
     log(await getName(profileId))
     for await (const followed of getFollowed(profileId)) {
-        const name = await getName(followed)
-        log(`|-> follows '${name} (${followed})`)
+        log(`|-> follows (${followed.id})   '${followed.name}'`)
     }
 
+    sw.stop();
 
+    console.log("---------------------------")
+
+    console.info(`Short Summary: ${sw.shortSummary()}`);
+    console.info(`Task Count: ${sw.getTaskCount()}`);
+
+    sw.prettyPrint();
 
     t.pass()
 

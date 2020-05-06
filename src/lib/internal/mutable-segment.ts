@@ -12,6 +12,8 @@ import {Doc, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem}
 import {FieldConfigFlag} from "../api/config"
 import {DocidAsyncIterable} from "./datastructs/docid-async-iterable/docid-async-iterable"
 import {BitmapDocidAsyncIterable} from "./datastructs/docid-async-iterable/bitmap-docid-async-iterable"
+import {Term} from "./query-ir/term-exp"
+import {stringToTerm} from "./query-ir/query-ir"
 
 type B64Token = string
 
@@ -104,12 +106,12 @@ export class MutableSegment {
 
                         // update bitmaps
                         if (conf.flags & FieldConfigFlag.SEARCHABLE && !Buffer.isBuffer(fieldValue)) {
-                            const tokens = conf.tokenizer(fieldValue)
+                            const terms = conf.tokenizer(fieldValue)
 
-                            if (tokens.length > 0) {
+                            if (terms.length > 0) {
                                 const mapTree = perFieldMap.get(fieldName) as Map<B64Token, RoaringBitmap32 | number>
-                                for (const token of tokens) {
-                                    const key = token.toString('base64')
+                                for (const term of terms) {
+                                    const key = term
                                     const map = mapTree.get(key)
                                     if (map == undefined) {
                                         mapTree.set(key, index)
@@ -139,9 +141,10 @@ export class MutableSegment {
                 const mapTree = perFieldMap.get(INTERNAL_FIELDS.FIELDS) as Map<B64Token, RoaringBitmap32>
 
                 for (const key of nonEmptyFields.keys()) {
-                    const map = mapTree.get(key)
+                    const term = stringToTerm(key)
+                    const map = mapTree.get(term)
                     if (map == undefined) {
-                        mapTree.set(key, RoaringBitmap32.from([index]))
+                        mapTree.set(term, RoaringBitmap32.from([index]))
                     } else {
                         map.add(index)
                     }
@@ -235,9 +238,9 @@ export class MutableSegment {
         }
     }
 
-    get(field: FieldName, term: Buffer): DocidAsyncIterable {
+    get(field: FieldName, term: Term): DocidAsyncIterable {
         const fieldMaps = this.perFieldMap.get(field)
-        const map = fieldMaps?.get(term.toString('base64'))
+        const map = fieldMaps?.get(term)
 
         if (typeof map === 'number') {
             return new SingletonDocidAsyncIterable(map)

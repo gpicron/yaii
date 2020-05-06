@@ -81,6 +81,7 @@
     "ssb-master": "^1.0.3",
     "ssb-ref": "^2.13.9",
     "ssb-typescript": "^2.0.0",
+    "stopwatch-node": "^1.0.2",
     "ts-node": "^8.6.2",
     "typedoc": "^0.17.3",
     "typedoc-plugin-markdown": "^2.2.16",

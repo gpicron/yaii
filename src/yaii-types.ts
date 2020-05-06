@@ -41,3 +41,4 @@ export const DEFAULT_INDEX_CONFIG: IndexConfig = {
 
 
 
+export {QueryOperator} from "./lib/api/base"

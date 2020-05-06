@@ -7,12 +7,11 @@ import {
     NumberRangeQuery,
     OrQuery,
     Query,
-    QueryOperator,
     TokenQuery
 } from "./query"
-import {FieldName, TokenValue, IntegerValue} from "./base"
+import {FieldName, TokenValue, IntegerValue, QueryOperator} from "./base"
 
-export function token(token: TokenValue, field?: FieldName): TokenQuery {
+export function token(token: TokenValue | TokenValue[], field?: FieldName): TokenQuery {
     return {
         operator: QueryOperator.TOKEN,
         field: field,

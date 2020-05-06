@@ -3,7 +3,7 @@ import {FieldName} from "../../api/base"
 import {MutableSegment} from "../mutable-segment"
 import {DocidAsyncIterable} from "../datastructs/docid-async-iterable/docid-async-iterable"
 
-export type Term = Buffer
+export type Term = string
 
 export class TermExp extends Exp {
     readonly field: FieldName
@@ -16,7 +16,7 @@ export class TermExp extends Exp {
     }
 
     toString(): string {
-        return `${this.field}:${this.term.toString('hex')}`
+        return `${this.field}:${this.term}`
     }
 
     async resolve(segment: MutableSegment): Promise<DocidAsyncIterable> {
