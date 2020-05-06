@@ -2,8 +2,9 @@
 import {BitmapDocidAsyncIterable} from "./bitmap-docid-async-iterable"
 import {DocId} from "../../../api/base"
 import {SingletonDocidAsyncIterable} from "./singleton-docid-async-iterable"
+import {AsyncIterableX} from "ix/asynciterable"
 
-export declare abstract class DocidAsyncIterable implements AsyncIterable<DocId> {
+export declare abstract class DocidAsyncIterable extends AsyncIterableX<DocId> {
     readonly mutable: boolean
     readonly size: number
 

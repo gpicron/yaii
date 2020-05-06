@@ -16,7 +16,7 @@ import {Term, TermExp} from "./query-ir/term-exp"
 import {stringToTerm} from "./query-ir/query-ir"
 
 export class MutableSegment {
-    private fieldsIndexConfig: ExtFieldsIndexConfig
+    readonly fieldsIndexConfig: ExtFieldsIndexConfig
     private indexConfig: ExtIndexConfig
     private perFieldMap: Map<FieldName, Map<Term, RoaringBitmap32 | number>> = new Map()
     private perFieldValue = new DocPackedArray()

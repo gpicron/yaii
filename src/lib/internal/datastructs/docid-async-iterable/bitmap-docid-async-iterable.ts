@@ -95,6 +95,11 @@ export class BitmapDocidAsyncIterable extends AsyncIterableX<DocId> implements D
         return this.bitmap.has(e);
     }
 
+    hasMoreThanOne() {
+        return this.bitmap.select(1) !== undefined;
+    }
+
+
     static orManyBitmap(opers: BitmapDocidAsyncIterable[]): BitmapDocidAsyncIterable {
         if (opers.length === 0) return BitmapDocidAsyncIterable.EMPTY_MAP
         if (opers.length === 1) return cloneIfNotReusable(opers[0])

@@ -53,6 +53,7 @@ export class SingletonDocidAsyncIterable extends AsyncIterableX<number> implemen
     async *[Symbol.asyncIterator](): AsyncIterator<number> {
         yield this.index
     }
+
 }
 
 export function cloneIfNotReusable<T extends DocidAsyncIterable>(value: DocidAsyncIterable): BitmapDocidAsyncIterable {
