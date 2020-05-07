@@ -122,6 +122,9 @@
     "scuttlebutt"
   ],
   "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "bytebuffer": "^5.0.1",
     "ix": "^3.0.2",
