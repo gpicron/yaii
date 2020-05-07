@@ -19,6 +19,7 @@ const ssbClient = require('ssb-client')
 const ssbKeys = require('ssb-keys')
 const util = require('util')
 import { StopWatch } from 'stopwatch-node';
+import {projectDocCount, projectFirst, projectLast} from "../../src/lib/api/aggregation"
 
 interface TestContext {
     server: SSBServer
@@ -415,6 +416,27 @@ test('Simple test of indexing', async t => {
     }
 
     sw.stop();
+
+    console.log("---------------------------")
+
+    sw.start("aggregate query")
+
+    const result = await index.aggregateQuery(and(
+            token('about', 'value.content.type'),
+            //token(profileId, 'value.author'),
+            //token(profileId, 'value.content.about'),
+        ), [
+            projectDocCount(),
+            projectFirst([{field:'value.timestamp', dir:SortDirection.DESCENDING}]),
+            projectLast([{field:'value.timestamp', dir:SortDirection.ASCENDING}]),
+        ]
+    )
+
+    sw.stop()
+
+    console.log(result)
+
+
 
     console.log("---------------------------")
 

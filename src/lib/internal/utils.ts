@@ -1,6 +1,5 @@
 import {FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue, isIntegerValue} from '../api/base'
 import {Term} from './query-ir/term-exp'
-import {arrayDestination, encodeUTF16toUTF8, stringSource} from 'utfx'
 import {FieldConfigFlagSet} from "../api/config"
 
 export type ExtFieldsIndexConfig = Record<FieldName, ExtFieldConfig>
@@ -25,6 +24,21 @@ export function removeAll<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void 
 }
 
 export type ICompareFunction<T> = (a: T, b: T) => number
+export type IEqualsFunction<T> = (a: T, b: T) => boolean
+
+export enum INTERNAL_FIELDS {
+    FIELDS = '£_FIELD',
+    ALL = '£_ALL',
+    SOURCE = '£_SOURCE'
+}
+
+export const REFERENCE_COLLATOR_COMPARATOR = new Intl.Collator(["en", 'fr', 'de'], {
+    caseFirst: 'lower',
+    ignorePunctuation: false,
+    sensitivity: 'base',
+    usage: 'sort'
+}).compare
+
 
 export function reverseCompareFunction<T>(f: ICompareFunction<T>): ICompareFunction<T> {
     return (a: T, b: T) => -f(a, b)
@@ -134,22 +148,7 @@ export function opinionatedCompare(a: FieldValue | undefined | Buffer, b: FieldV
                 case 'number':
                     return 1
                 case 'string':
-                    const aBytes = new Array<number>(0)
-                    let comp = 0
-                    encodeUTF16toUTF8(stringSource(a), arrayDestination(aBytes))
-                    encodeUTF16toUTF8(stringSource(b), function(bByte: number) {
-                        if (comp == 0) {
-                            const aByte = aBytes.shift()
-                            if (aByte) {
-                                comp = aByte - bByte
-                            } else {
-                                comp = -1
-                            }
-                        }
-                    })
-                    if (comp == 0 && aBytes.length > 0) comp = 1
-
-                    return comp
+                    return REFERENCE_COLLATOR_COMPARATOR(a, b)
             }
         case 'object':
             switch (typeof b) {
@@ -178,8 +177,3 @@ export function opinionatedCompare(a: FieldValue | undefined | Buffer, b: FieldV
     }
 }
 
-export enum INTERNAL_FIELDS {
-    FIELDS = '£_FIELD',
-    ALL = '£_ALL',
-    SOURCE = '£_SOURCE'
-}

@@ -54,7 +54,7 @@ export class MutableSegment {
         }
 
         if (fConfig.flags & FieldConfigFlag.SORT_OPTIMIZED) {
-            this.perSortedFieldValue.set(field, new SortFieldPackedArray())
+            this.perSortedFieldValue.set(field, new SortFieldPackedArray(field))
         }
     }
 
@@ -236,6 +236,36 @@ export class MutableSegment {
         }
     }
 
+    projectDoc(docId: DocId, projection?: FieldName[]): FieldValue | FieldValues | FieldStorableValue | Doc | undefined {
+        if (projection) {
+            if (this.hasStoredFields) {
+                const allStoredFields = this.perFieldValue.get(docId) as Doc
+                const doc: ResultItem<Doc> = {
+                    _id: docId
+                }
+                for (let i = 0; i < projection.length; i++) {
+                    const fieldName = projection[i]
+                    doc[fieldName] = allStoredFields[fieldName] as FieldValue | FieldValues | FieldStorableValue
+                }
+
+                return doc
+            } else {
+                return {
+                    _id: docId
+                }
+            }
+        } else {
+            if (this.docSourceStore) {
+                return this.docSourceStore.get(docId - this.from)
+            } else {
+                return  {
+                    _id: docId
+                }
+            }
+        }
+    }
+
+
     get(field: FieldName, term: Term): DocidAsyncIterable {
         const fieldMaps = this.perFieldMap.get(field)
         const map = fieldMaps?.get(term)
@@ -249,7 +279,7 @@ export class MutableSegment {
         }
     }
 
-    getOptimizedComparator(fieldName: FieldName): ICompareFunction<DocId> | undefined {
+    getOptimizedComparator(fieldName: FieldName): ICompareFunction<ResultItem<Doc>> | undefined {
         return this.perSortedFieldValue.get(fieldName)?.comparator
     }
 

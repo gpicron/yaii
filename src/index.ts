@@ -1,9 +1,9 @@
-import {DEFAULT_INDEX_CONFIG, InvertedIndex} from './yaii-types'
+import { AggregateResults, DEFAULT_INDEX_CONFIG, InvertedIndex} from './yaii-types'
 import {Doc, DocId, FieldName, FieldStorableValue, FieldValue, FieldValues, ResultItem} from './lib/api/base'
 import {Query, SortClause} from './lib/api/query'
 import {FieldConfig, FieldConfigFlag, FieldsConfig, IndexConfig, ValueGenerator} from "./lib/api/config"
 
-import {buildExpression, numberToTerms, stringToTerm, TERM_FALSE, TERM_TRUE} from './lib/internal/query-ir/query-ir'
+import {buildFilterExpression, numberToTerms, stringToTerm, TERM_FALSE, TERM_TRUE} from './lib/internal/query-ir/query-ir'
 import {MutableSegment} from './lib/internal/mutable-segment'
 import {
     ExtFieldConfig,
@@ -26,6 +26,8 @@ import * as util from "util"
 import {Term} from "./lib/internal/query-ir/term-exp"
 import {Aggregation} from "./lib/api/aggregation"
 import {SortedDocidAsyncIterable} from "./lib/internal/datastructs/docid-async-iterable/sorted-docid-async-iterable"
+import {AggregateProcessor} from "./lib/internal/query-ir/base"
+import {buildAggregateExpression} from "./lib/internal/query-ir/aggs-ir"
 
 
 const NULL_TOKENIZER: Termizer = () => {
@@ -44,6 +46,20 @@ type DocPipelineMapFunction = (input: Doc) => Promise<Doc> | Doc
 type IndexableDocPipelineMapFunction = (
     input: IndexableDoc
 ) => Promise<IndexableDoc> | IndexableDoc
+
+function removeDeletedAndAddedAfter(docIds: AsyncIterableX<number>, segmentLast: number, deleted: BitmapDocidAsyncIterable): AsyncIterableX<number> {
+    if (BitmapDocidAsyncIterable.is(docIds)) {
+        docIds = cloneIfNotReusable(docIds).removeRange(segmentLast).andNotInPlace(deleted)
+    } else if (SingletonDocidAsyncIterable.is(docIds)) {
+        docIds = deleted.has(docIds.index) ? BitmapDocidAsyncIterable.EMPTY_MAP : docIds
+    } else {
+        docIds = as(docIds).pipe(
+            op.filter(e => e < segmentLast && !deleted.has(e))
+        )
+    }
+    return docIds
+}
+
 
 export class MemoryInvertedIndex implements InvertedIndex {
     readonly fieldsConfig: ExtFieldsIndexConfig
@@ -236,13 +252,29 @@ export class MemoryInvertedIndex implements InvertedIndex {
     }
 
 
-    aggregateQuery(
+    async aggregateQuery(
             filter: Query,
-            aggregations: Array<Aggregation>,
-            sort?: Array<SortClause>) {
-        console.log(filter)
-        console.log(aggregations)
-        console.log(sort)
+            aggregations: Array<Aggregation>): Promise<AggregateResults> {
+
+        const segment = this.segment
+        const deleted = this.deleted
+
+        let exp = buildFilterExpression(filter, segment)
+
+        const segmentLast = segment.next
+
+        exp = exp.rewrite(segment)
+
+        let docIds: AsyncIterableX<number> = await exp.resolve(segment)
+
+        docIds = removeDeletedAndAddedAfter(docIds, segmentLast, deleted)
+
+        const aggregateProcessor: AggregateProcessor = buildAggregateExpression(aggregations, segment)
+
+
+        return aggregateProcessor(docIds)
+
+
 
     }
 
@@ -271,23 +303,14 @@ export class MemoryInvertedIndex implements InvertedIndex {
         const deleted = this.deleted
 
         const resolveAndProjectSegment = async function*() {
-            let exp = buildExpression(filter, segment)
+            let exp = buildFilterExpression(filter, segment)
 
             const segmentLast = segment.next
 
             exp = exp.rewrite(segment)
 
             let docIds: AsyncIterableX<DocId> = await exp.resolve(segment)
-
-            if (BitmapDocidAsyncIterable.is(docIds)) {
-                docIds = cloneIfNotReusable(docIds).removeRange(segmentLast).andNotInPlace(deleted)
-            } else if (SingletonDocidAsyncIterable.is(docIds)) {
-                docIds = deleted.has(docIds.index) ? BitmapDocidAsyncIterable.EMPTY_MAP : docIds
-            } else {
-                docIds = as(docIds).pipe(
-                    op.filter(e => e < segmentLast && !deleted.has(e))
-                )
-            }
+            docIds = removeDeletedAndAddedAfter(docIds, segmentLast, deleted)
 
             if (Array.isArray(sort) && sort.length > 0) {
                 if (!SingletonDocidAsyncIterable.is(docIds) ||

@@ -97,7 +97,7 @@ function fieldNameOrAll(q: LeafQuery): FieldName | INTERNAL_FIELDS.ALL {
     return q.field || INTERNAL_FIELDS.ALL
 }
 
-export function buildExpression(query: Query, segment: MutableSegment): Exp {
+export function buildFilterExpression(query: Query, segment: MutableSegment): Exp {
     switch (query.operator) {
         case QueryOperator.ALL:
             return ALL_EXP
@@ -127,21 +127,21 @@ export function buildExpression(query: Query, segment: MutableSegment): Exp {
         }
         case QueryOperator.AND: {
             const q = query as AndQuery
-            const operands = q.operands.map(it => buildExpression(it, segment))
+            const operands = q.operands.map(it => buildFilterExpression(it, segment))
 
             return new BooleanExpression(undefined, operands)
         }
         case QueryOperator.OR: {
             const q = query as OrQuery
 
-            const operands = q.operands.map(it => buildExpression(it, segment))
+            const operands = q.operands.map(it => buildFilterExpression(it, segment))
 
             return new BooleanExpression(operands)
         }
         case QueryOperator.NOT: {
             const q = query as NotQuery
 
-            return new BooleanExpression(undefined, undefined, [buildExpression(q.operand, segment)])
+            return new BooleanExpression(undefined, undefined, [buildFilterExpression(q.operand, segment)])
         }
         case QueryOperator.NUMBER: {
             const q = query as NumberQuery

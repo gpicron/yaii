@@ -1,3 +1,5 @@
+import {Aggregation} from "./aggregation"
+
 export type FieldName = string
 export type FieldValue = TokenValue | IntegerValue
 export type FieldValues = Array<FieldValue>
@@ -48,6 +50,14 @@ export interface ResultItem<T extends Doc> extends StoredFields {
     _source?: T
 }
 
+
+export type AggregateResults = AggregateResult[]
+
+export interface AggregateResult {
+    aggregation: Aggregation
+}
+
+
 export enum QueryOperator {
     TOKEN = 'TOKEN',
     TOKEN_RANGE = 'TOKEN_RANGE',
@@ -65,5 +75,5 @@ export enum QueryOperator {
 export enum AggregationName {
     LAST = 'LAST',
     FIRST = 'FIRST',
-    COUNT = 'FIRST',
+    COUNT = 'COUNT',
 }

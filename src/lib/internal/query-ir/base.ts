@@ -2,6 +2,8 @@ import {MutableSegment} from "../mutable-segment"
 import {DocidAsyncIterable} from "../datastructs/docid-async-iterable/docid-async-iterable"
 import {RoaringBitmap32} from "roaring"
 import {BitmapDocidAsyncIterable} from "../datastructs/docid-async-iterable/bitmap-docid-async-iterable"
+import {AggregateResults} from "../../api/base"
+import {AsyncIterableX} from "ix/asynciterable"
 
 export abstract class Exp {
     // eslint-disable-next-line
@@ -35,3 +37,5 @@ export class NoneExp extends Exp {
     }
 }
 
+
+export type AggregateProcessor = (docIds: AsyncIterableX<number>) => Promise<AggregateResults>

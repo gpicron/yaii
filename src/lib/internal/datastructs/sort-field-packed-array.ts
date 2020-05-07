@@ -1,23 +1,56 @@
+/* eslint-disable @typescript-eslint/ban-ts-ignore */
 import { RoaringBitmap32 } from 'roaring'
-import {DocId, FieldValue} from '../../api/base'
-import { ICompareFunction } from '../utils'
+import {Doc, DocId, FieldValue, ResultItem} from '../../api/base'
+import {ICompareFunction, REFERENCE_COLLATOR_COMPARATOR} from '../utils'
 import ByteBuffer = require('bytebuffer')
 import Long = require('long')
 
-function compareOver(bb: ByteBuffer, aOffset: number, bOffset: number, over: number): number {
-    for (let i = 0; i < over; i++) {
-        const cmp = bb.readUint8(aOffset) - bb.readUint8(bOffset)
-        if (cmp != 0) return cmp
-        aOffset++
-        bOffset++
+
+class ComparisonKeyCache {
+    readonly id: DocId
+    readonly pointer: number
+    readonly prefix: number
+
+    private numberValue: number | undefined
+    private stringValue: string | undefined
+
+    constructor(id: DocId, pointers: RoaringBitmap32, store: ByteBuffer) {
+        this.id = id
+        this.pointer = pointers.select(id - 1) || 0
+        this.prefix = store.readByte(this.pointer)
     }
 
-    return 0
+    getNumberValue(store: ByteBuffer): number {
+        if (this.numberValue) return this.numberValue
+        this.numberValue = store.readUint64(this.pointer).shiftLeft(8).shiftRightUnsigned(8).toNumber()
+        return this.numberValue
+    }
+    getStringValue(pointers: RoaringBitmap32, store: ByteBuffer): string {
+        if (this.stringValue) return this.stringValue
+
+        const endPointer = pointers.select(this.id) || store.offset
+        const len = endPointer - this.pointer - 1
+
+        // @ts-ignore  (bug in @types, second param is a string)
+        this.stringValue = store.readUTF8String(len, 'b', this.pointer+1) as string
+
+        return this.stringValue
+    }
+
+
 }
 
+
 export class SortFieldPackedArray {
+    private id: string
+    private cacheField: string
     private pointers = new RoaringBitmap32()
     private store = ByteBuffer.allocate(4 * 1024, false, true)
+
+    constructor(id: string) {
+        this.id = id
+        this.cacheField = `__cache__${id}`
+    }
 
     add(value: FieldValue): void {
         switch (typeof value) {
@@ -47,44 +80,47 @@ export class SortFieldPackedArray {
         this.pointers.add(this.store.offset)
     }
 
-    comparator: ICompareFunction<DocId> = (a: DocId, b: DocId) => {
-        let aPointer = this.pointers.select(a - 1) || 0
-        let bPointer = this.pointers.select(b - 1) || 0
+
+
+    comparator: ICompareFunction<ResultItem<Doc>> = (a: ResultItem<Doc>, b: ResultItem<Doc>) => {
+        const aId = a._id
+        let aCache = a[this.cacheField] as unknown as ComparisonKeyCache
+        if (!aCache) {
+            aCache = new ComparisonKeyCache(aId, this.pointers, this.store)
+            // @ts-ignore
+            a[this.cacheField] = aCache
+        }
+
+        const bId = b._id
+        let bCache = b[this.cacheField] as unknown as ComparisonKeyCache
+        if (!bCache) {
+            bCache = new ComparisonKeyCache(bId, this.pointers, this.store)
+            // @ts-ignore
+            b[this.cacheField] = bCache
+        }
 
         const s = this.store
 
-        const prefixA = s.readByte(aPointer)
-        const prefixB = s.readByte(bPointer)
-
-        const compPrefix = prefixA - prefixB
+        const compPrefix = aCache.prefix - bCache.prefix
 
         if (compPrefix != 0) return compPrefix
 
-        switch (prefixA) {
+        switch (aCache.prefix) {
             case 0x00:
             case 0x01:
             case 0x02:
                 return 0
             case 0x03:
-                aPointer++
-                bPointer++
-                return compareOver(s, aPointer, bPointer, 7)
-            case 0x04:
-                const aEndPointer = this.pointers.select(a) || s.offset
-                const bEndPointer = this.pointers.select(b) || s.offset
-                aPointer++
-                bPointer++
-                const aLen = aEndPointer - aPointer
-                const bLen = bEndPointer - bPointer
 
-                const comp = compareOver(s, aPointer, bPointer, Math.min(aLen, bLen))
-                if (comp == 0) {
-                    return aLen - bLen
-                } else {
-                    return comp
-                }
+                return aCache.getNumberValue(s) - bCache.getNumberValue(s)
+            case 0x04:
+                const aString = aCache.getStringValue(this.pointers, s)
+                const bString = aCache.getStringValue(this.pointers, s)
+
+                return REFERENCE_COLLATOR_COMPARATOR(aString, bString)
             default:
                 throw new Error('bug')
         }
     }
 }
+
