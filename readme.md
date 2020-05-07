@@ -21,7 +21,11 @@ _Sonar_ :
 [Code Coverage]: https://codecov.io/gh/gpicron/yaii/branch/master/graph/badge.svg
 [Dependencies]: https://david-dm.org/gpicron/yaii/status.svg
 
-> Scuttlebutt plugin that implement the concepts of subjective identity and groups
+> Inverted Index db in _alpha_ version.  More an experiment than a fully production library.
+
+The base of the design is Lucene/ElasticSearch but with adaptation to the node.js features and limitation.
+
+Currently only in-memory.
 
 ## Install
 
