@@ -5,6 +5,7 @@
 [![Code Coverage][]](https://codecov.io/gh/gpicron/yaii)
 [![Dependencies][]](https://david-dm.org/gpicron/yaii)
 [![Known Vulnerabilities](https://snyk.io/test/github/gpicron/yaii/badge.svg?targetFile=package.json)](https://snyk.io/test/github/gpicron/yaii?targetFile=package.json)
+![Release](https://github.com/gpicron/yaii/workflows/Release/badge.svg)
 
 _Sonar_ :
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=gpicron_yaii&metric=alert_status)](https://sonarcloud.io/dashboard?id=gpicron_yaii)
