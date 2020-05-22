@@ -71,3 +71,17 @@ export function lastIndexOf<T>(array: T[], item: T, equalsFunction?: IEqualsFunc
     }
     return -1;
 }
+
+
+export function removeAll<T>(array: T[], toRemove: T[], equalsFunction?: IEqualsFunction<T>): T[] {
+    const equals = equalsFunction || ((a: T, b: T) => a === b);
+    const length = array.length;
+    const result = []
+    for (let i = 0; i < length; i++) {
+        const item = array[i]
+        if (!contains(toRemove, item, equals)) {
+            result.push(item)
+        }
+    }
+    return result;
+}

@@ -4,6 +4,7 @@ export type IndexConfig = {
     defaultFieldConfig: FieldConfig
     storeSourceDoc: boolean
     allFieldConfig: FieldConfig
+    storePath: string
 }
 
 export type FieldsConfig = Record<FieldName, FieldConfig>

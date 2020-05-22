@@ -1,5 +1,5 @@
-import { Analyzer} from '../api/config'
-import { FieldValue } from "../api/base"
+import {Analyzer} from '../api/config'
+import {FieldValue} from "../api/base"
 
 export function lowercaseFilter(tokenizer: Analyzer): Analyzer {
     return (input: FieldValue) => {

@@ -1,4 +1,4 @@
-import {AggregateResult, AggregationName, Doc, FieldName, FieldStorableValue, FieldValue, FieldValues} from "./base"
+import {AggregateResult, AggregateResults, AggregationName, Doc, FieldName, ResultItem} from "./base"
 import {SortClause} from "./query"
 
 export interface Aggregation {
@@ -14,15 +14,9 @@ export interface LastAggregation extends TopAggregation {
     readonly name: AggregationName.LAST
 }
 
-export interface TopAggregateResult extends AggregateResult {
-    value: FieldValue
-        | FieldValues
-        | FieldStorableValue
-        | Doc
-        | undefined
-}
+export type TopAggregateResult<T extends Doc> = AggregateResult<ResultItem<T> | undefined>
 
-export interface LastAggregateResult extends TopAggregateResult {
+export interface LastAggregateResult<T extends Doc> extends TopAggregateResult<T> {
     aggregation: LastAggregation
 }
 
@@ -31,7 +25,7 @@ export interface FirstAggregation extends TopAggregation {
     readonly name: AggregationName.FIRST
 }
 
-export interface FirstAggregateResult extends TopAggregateResult {
+export interface FirstAggregateResult<T extends Doc> extends TopAggregateResult<T> {
     aggregation: FirstAggregation
 }
 
@@ -40,10 +34,21 @@ export interface CountDocAggregation {
     readonly name: AggregationName.COUNT
 }
 
-export interface CountDocAggregateResult extends AggregateResult {
+export interface CountDocAggregateResult extends AggregateResult<number> {
     aggregation: CountDocAggregation
-    count: number
 }
+
+
+export interface GroupByAggregation {
+    readonly name: AggregationName.GROUP_BY
+    readonly fieldName: FieldName
+    readonly aggregations: Aggregation[]
+}
+
+export interface GroupByAggregateResult extends AggregateResult<Map<string|number|undefined,AggregateResults>> {
+    aggregation: GroupByAggregation
+}
+
 
 
 //eslint-disable-next-line
@@ -69,8 +74,13 @@ export function isCountDocAggregation(v: any): v is CountDocAggregation {
     return v.name == AggregationName.COUNT
 }
 
+//eslint-disable-next-line
+export function isGroupByAggregation(v: any): v is GroupByAggregation {
+    return v.name == AggregationName.GROUP_BY
+}
 
-export function projectLast(sort: Array<SortClause>, projections?: FieldName[]): LastAggregation {
+
+export function aggrLast(sort: Array<SortClause>, projections?: FieldName[]): LastAggregation {
     return {
         name: AggregationName.LAST,
         sort: sort,
@@ -78,15 +88,24 @@ export function projectLast(sort: Array<SortClause>, projections?: FieldName[]):
     }
 }
 
-export function projectFirst(sort: Array<SortClause>, projections?: FieldName[]): FirstAggregation {
+export function aggrFirst(sort: Array<SortClause>, projections?: FieldName[]): FirstAggregation {
     return {
         name: AggregationName.FIRST,
         sort: sort,
         projections: projections
     }
 }
-export function projectDocCount(): CountDocAggregation {
+
+export function aggrCount(): CountDocAggregation {
     return {
         name: AggregationName.COUNT,
+    }
+}
+
+export function aggrGroupBy(fieldName: FieldName, aggregations: Aggregation[]): GroupByAggregation {
+    return {
+        name: AggregationName.GROUP_BY,
+        fieldName: fieldName,
+        aggregations: aggregations
     }
 }

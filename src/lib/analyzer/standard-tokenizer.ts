@@ -1,4 +1,4 @@
-import { Analyzer} from '../api/config'
+import {Analyzer} from '../api/config'
 import {FieldValue} from "../api/base"
 
 const defaultSeparator = /[\s\-,;:.]+/g

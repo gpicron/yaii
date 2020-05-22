@@ -1,23 +1,22 @@
-import {MutableSegment} from "../mutable-segment"
-import {DocidAsyncIterable} from "../datastructs/docid-async-iterable/docid-async-iterable"
-import {RoaringBitmap32} from "roaring"
 import {BitmapDocidAsyncIterable} from "../datastructs/docid-async-iterable/bitmap-docid-async-iterable"
 import {AggregateResults} from "../../api/base"
 import {AsyncIterableX} from "ix/asynciterable"
+import {BaseSegment} from "../segments/segment"
+import {DocIdIterable} from "../datastructs/docid-async-iterable/base"
+import {RangeDocidAsyncIterable} from "../datastructs/docid-async-iterable/range-docid-async-iterable"
 
 export abstract class Exp {
     // eslint-disable-next-line
-    rewrite(segment: MutableSegment): Exp {
+    rewrite(segment: BaseSegment): Exp {
         return this
     }
 
-    abstract async resolve(segment: MutableSegment, forceResolveToBitmap?: boolean): Promise<DocidAsyncIterable>
+    abstract async resolve(segment: BaseSegment, forceResolveToBitmap?: boolean): Promise<DocIdIterable>
 }
 
 export class AllExp extends Exp {
-    async resolve(segment: MutableSegment): Promise<DocidAsyncIterable> {
-        const m = RoaringBitmap32.fromRange(segment.from, segment.size + segment.from)
-        return new BitmapDocidAsyncIterable(true, m)
+    async resolve(segment: BaseSegment): Promise<DocIdIterable> {
+        return new RangeDocidAsyncIterable(0, segment.rangeSize)
     }
 
     toString(): string {
@@ -28,7 +27,7 @@ export class AllExp extends Exp {
 export const ALL_EXP = new AllExp()
 
 export class NoneExp extends Exp {
-    async resolve(): Promise<DocidAsyncIterable> {
+    async resolve(): Promise<DocIdIterable> {
         return new BitmapDocidAsyncIterable()
     }
 

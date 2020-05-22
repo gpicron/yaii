@@ -1,7 +1,7 @@
 import {Exp} from "./base"
 import {FieldName} from "../../api/base"
-import {MutableSegment} from "../mutable-segment"
-import {DocidAsyncIterable} from "../datastructs/docid-async-iterable/docid-async-iterable"
+import {BaseSegment} from "../segments/segment"
+import {DocIdIterable} from "../datastructs/docid-async-iterable/base"
 
 export type Term = string
 
@@ -19,7 +19,7 @@ export class TermExp extends Exp {
         return `${this.field}:${this.term}`
     }
 
-    async resolve(segment: MutableSegment): Promise<DocidAsyncIterable> {
+    async resolve(segment: BaseSegment): Promise<DocIdIterable> {
         return segment.get(this.field, this.term)
     }
 }

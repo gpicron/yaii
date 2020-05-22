@@ -1,6 +1,17 @@
 import anyTest, {TestInterface} from 'ava'
-import {MemoryInvertedIndex} from '../../src'
-import {FieldConfigFlag, Doc, and, or, present, ResultItem, SortDirection, token, mooTokenizer} from '../../src/yaii-types'
+
+import {
+    FieldConfigFlag,
+    Doc,
+    and,
+    or,
+    present,
+    ResultItem,
+    SortDirection,
+    token,
+    mooTokenizer,
+    all
+} from '../../src/yaii-types'
 import {Source} from 'pull-stream'
 import {AboutContent, ContactContent, Content, FeedId, Msg} from 'ssb-typescript/readme'
 import {as, count, first, from, reduce} from 'ix/asynciterable'
@@ -19,7 +30,18 @@ const ssbClient = require('ssb-client')
 const ssbKeys = require('ssb-keys')
 const util = require('util')
 import { StopWatch } from 'stopwatch-node';
-import {projectDocCount, projectFirst, projectLast} from "../../src/lib/api/aggregation"
+import {
+    LastAggregateResult,
+    aggrCount,
+    aggrFirst,
+    aggrLast,
+    CountDocAggregateResult, aggrGroupBy, GroupByAggregateResult
+} from "../../src/lib/api/aggregation"
+import {BaseInvertedIndex} from "../../src/base-inverted-index"
+
+import * as rm from "rimraf"
+import v8 = require('v8');
+import {bucketTerm} from "../../src/lib/api/bucket-query"
 
 interface TestContext {
     server: SSBServer
@@ -42,13 +64,8 @@ const test = anyTest as TestInterface<TestContext>
 test.before(async t => {
     const config = Config()
 
-    const serverFactory = SecretStack(config)
-        .use(require('ssb-db'))
-        .use(require('ssb-master'))
-        .use(require('ssb-backlinks'))
-
     const server = flotilla(config)
-    //const server = serverFactory(config) // start application
+
     server.whoami((err: unknown, res: unknown) => {
         if (err) throw err
         console.log(res)
@@ -97,7 +114,7 @@ const mainAnalyzer = mooTokenizer({
     ]
 })
 
-function printMemoryUsage() {
+async function printMemoryUsage() {
     if (global.gc) {
         global.gc()
     } else {
@@ -106,6 +123,11 @@ function printMemoryUsage() {
         )
     }
 
+//    const filename = v8.writeHeapSnapshot()
+
+
+//    console.log("Heap dump written to", filename);
+
     const used = process.memoryUsage()
     for (let key in used) {
         console.log(
@@ -113,6 +135,9 @@ function printMemoryUsage() {
             `${key} ${Math.round((used[key] / 1024 / 1024) * 100) / 100} MB`
         )
     }
+
+    console.log("heap stats", v8.getHeapStatistics())
+
 }
 
 function log(x: any) {
@@ -120,12 +145,14 @@ function log(x: any) {
 }
 
 test('Simple test of indexing', async t => {
-    printMemoryUsage()
+    await printMemoryUsage()
 
-    const index = new MemoryInvertedIndex(
+    rm.sync('./db-test')
+
+    const index = new BaseInvertedIndex(
         {
             'value.author': {
-                flags: FieldConfigFlag.SEARCHABLE,
+                flags: FieldConfigFlag.SEARCHABLE | FieldConfigFlag.STORED,
                 addToAllField: true,
                 analyzer: undefined
             },
@@ -135,7 +162,7 @@ test('Simple test of indexing', async t => {
                 analyzer: undefined
             },
             'value.sequence': {
-                flags: 0,
+                flags: FieldConfigFlag.STORED | FieldConfigFlag.SORT_OPTIMIZED,
                 addToAllField: false,
                 analyzer: undefined
             },
@@ -145,9 +172,9 @@ test('Simple test of indexing', async t => {
                 analyzer: undefined
             },
             'value.timestamp': {
-                flags: FieldConfigFlag.SORT_OPTIMIZED | FieldConfigFlag.SEARCHABLE,
+                flags: FieldConfigFlag.STORED | FieldConfigFlag.SEARCHABLE,
                 addToAllField: false,
-                analyzer: undefined,
+                analyzer: undefined
             },
             'value.hash': {
                 flags: 0,
@@ -155,7 +182,7 @@ test('Simple test of indexing', async t => {
                 analyzer: undefined
             },
             'TDA' : {
-                flags: FieldConfigFlag.SORT_OPTIMIZED,
+                flags: FieldConfigFlag.STORED | FieldConfigFlag.SORT_OPTIMIZED,
                 addToAllField: false,
                 analyzer: undefined,
                 generator: (input: Doc) => {
@@ -177,9 +204,12 @@ test('Simple test of indexing', async t => {
             allFieldConfig: {
                 flags: FieldConfigFlag.SEARCHABLE,
                 analyzer: mainAnalyzer
-            }
+            },
+            storePath: './db-test'
         }
     )
+
+
 
     t.log(t.context.server.ready())
 
@@ -201,12 +231,13 @@ test('Simple test of indexing', async t => {
     const messages = from(new PullSourceAsyncIterator(source)).pipe(
         op.filter(filterTypes),
         op.take(500000),
-        op.tap((value) => {
-            if (counter++ % 50000 == 0) {
+        op.tap(async (value) => {
+            if (++counter % 10000 == 0) {
                 console.log('progress:', counter)
             }
-        })
+        }),
     )
+
 
     const sw = new StopWatch('sw')
     sw.start("indexing")
@@ -216,9 +247,15 @@ test('Simple test of indexing', async t => {
 
     sw.stop()
 
+    sw.start("writing index to disk")
+
+    await index.commit(true)
+
+    sw.stop()
+
     console.log('indexed:', indexed)
 
-    printMemoryUsage()
+    await printMemoryUsage()
 
     //console.log(index.listAllKnownField())
 
@@ -239,7 +276,7 @@ test('Simple test of indexing', async t => {
         ])
         .pipe(
             op.tap(x => log(x)),
-            op.map(x  => x._source),
+            op.map(x  => x._source)
         )
 
 
@@ -304,7 +341,7 @@ test('Simple test of indexing', async t => {
         index.query<Msg<ContactContent>>(
                 and(
                     token('contact', 'value.content.type'),
-                    token(profileId, 'value.author'),
+                    token(profileId, 'value.author')
                 )
             )
 
@@ -362,16 +399,19 @@ test('Simple test of indexing', async t => {
     sw.start("a more efficient approach than recreating a new structure to hold reduced states while perfectly viable performance wise")
 
     async function getName(id: FeedId) {
-        const iter = index.query<Msg<AboutContent>>(and(
+        const aggr = index.aggregateQuery(and(
                 token('about', 'value.content.type'),
                 token(id, 'value.author'),
                 token(id, 'value.content.about'),
                 present('value.content.name')
             ), [
-                {field:"TDA", dir: SortDirection.DESCENDING}
-            ], 1)[Symbol.asyncIterator]()
+                aggrLast([{field:"TDA", dir: SortDirection.ASCENDING}])
+        ])
 
-        return iter.next().then(r => r.value?._source.value?.content?.name || "NO NAME")
+        return aggr.then(r => {
+            const aggrRes = r[0] as LastAggregateResult<Msg<AboutContent>>
+            return aggrRes.value?._source?.value?.content?.name || "NO NAME"
+        })
     }
 
     function getFollowed(id: FeedId) {
@@ -423,12 +463,12 @@ test('Simple test of indexing', async t => {
 
     const result = await index.aggregateQuery(and(
             token('about', 'value.content.type'),
-            //token(profileId, 'value.author'),
-            //token(profileId, 'value.content.about'),
+            token(profileId, 'value.author'),
+            token(profileId, 'value.content.about'),
         ), [
-            projectDocCount(),
-            projectFirst([{field:'value.timestamp', dir:SortDirection.DESCENDING}]),
-            projectLast([{field:'value.timestamp', dir:SortDirection.ASCENDING}]),
+            aggrCount(),
+            aggrFirst([{field:'value.timestamp', dir:SortDirection.DESCENDING}]),
+            aggrLast([{field:'value.timestamp', dir:SortDirection.ASCENDING}])
         ]
     )
 
@@ -440,8 +480,124 @@ test('Simple test of indexing', async t => {
 
     console.log("---------------------------")
 
+
+    sw.start("vector clock query")
+
+    const resultBucket = await index.aggregateQuery(all(),
+        [
+            aggrGroupBy('value.author', [
+                aggrCount(),
+                aggrFirst([{field:'value.sequence', dir:SortDirection.DESCENDING}], ['value.sequence'])
+            ])
+        ]
+    )
+
+    const clock = new Array<{
+        author: string,
+        count: number,
+        lastSequence : number | undefined
+    }>()
+
+    const aggrs = resultBucket[0] as GroupByAggregateResult
+    for await (const [group,results] of aggrs.value.entries()) {
+        const countAggrRes = results[0] as CountDocAggregateResult
+        const lastSeqAggrRes = results[1] as LastAggregateResult<{ 'value.sequence': number }>
+        const lastSequence = (lastSeqAggrRes.value) ? lastSeqAggrRes.value['value.sequence'] as number : undefined
+
+        const line = {
+            author: group as string,
+            count: countAggrRes.value,
+            lastSequence: lastSequence
+        }
+
+        //console.log(line)
+        clock.push(line)
+    }
+
+    console.log(clock.length)
+    sw.stop()
+
+    console.log("---------------------------")
+
+    sw.start("vector clock query with cache loaded")
+
+    const resultBucket2nd = await index.aggregateQuery(all(),
+        [
+            aggrGroupBy('value.author', [
+                aggrCount(),
+                aggrFirst([{field:'value.sequence', dir:SortDirection.DESCENDING}], ['value.sequence'])
+            ])
+        ]
+    )
+
+    const clock2nd = new Array<{
+        author: string,
+        count: number,
+        lastSequence : number | undefined
+    }>()
+
+    const aggrs2nd = resultBucket2nd[0] as GroupByAggregateResult
+    for await (const [group,results] of aggrs.value.entries()) {
+        const countAggrRes = results[0] as CountDocAggregateResult
+        const lastSeqAggrRes = results[1] as LastAggregateResult<{ 'value.sequence': number }>
+        const lastSequence = (lastSeqAggrRes.value) ? lastSeqAggrRes.value['value.sequence'] as number : undefined
+
+        const line = {
+            author: group as string,
+            count: countAggrRes.value,
+            lastSequence: lastSequence
+        }
+
+        //console.log(line)
+        clock2nd.push(line)
+    }
+
+    console.log(clock2nd.length)
+    sw.stop()
+
+    console.log("---------------------------")
+
+    sw.start("vector clock query brute force")
+
+    const clock2 = new Map<string, {
+        count: number,
+        lastSequence: number
+    }>()
+
+    await count(index.query<Doc>(all(), undefined, Number.POSITIVE_INFINITY, ['value.sequence', 'value.author']).pipe(
+        op.tap( r => {
+                const author = r['value.author'] as string
+                const seq = r['value.sequence'] as number
+
+                if (author && seq) {
+                    let perAuthor = clock2.get(author)
+                    if (!perAuthor) {
+                        perAuthor = {
+                            count: 0,
+                            lastSequence: -1
+                        }
+
+                        clock2.set(author, perAuthor)
+                    }
+
+                    perAuthor.count++
+                    perAuthor.lastSequence = Math.max(perAuthor.lastSequence, seq)
+                }
+
+        })
+    ))
+
+    console.log(clock2.size)
+    sw.stop()
+
+
+
+
+    console.log("---------------------------")
+
     console.info(`Short Summary: ${sw.shortSummary()}`);
     console.info(`Task Count: ${sw.getTaskCount()}`);
+
 
     sw.prettyPrint();
 

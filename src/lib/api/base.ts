@@ -51,10 +51,11 @@ export interface ResultItem<T extends Doc> extends StoredFields {
 }
 
 
-export type AggregateResults = AggregateResult[]
+export type AggregateResults = AggregateResult<unknown>[]
 
-export interface AggregateResult {
+export interface AggregateResult<T> {
     aggregation: Aggregation
+    value: T
 }
 
 
@@ -68,12 +69,17 @@ export enum QueryOperator {
     OR = 'OR',
     AND = 'AND',
     NOT = 'NOT',
-    HAS_FIELD = 'HAS_FIELD',
-    BUCKET = 'BUCKET'
+    HAS_FIELD = 'HAS_FIELD'
 }
 
 export enum AggregationName {
     LAST = 'LAST',
     FIRST = 'FIRST',
     COUNT = 'COUNT',
+    GROUP_BY = 'GROUP_BY'
+}
+
+export enum BucketType {
+    TERM = 'TERM',
+    NUMERIC= 'NUMERIC',
 }

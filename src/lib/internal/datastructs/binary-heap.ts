@@ -1,4 +1,3 @@
-
 import * as arrays from '../arrays';
 import {ICompareFunction} from "../utils"
 
@@ -118,7 +117,7 @@ export default class Heap<T> {
      * @param {number} index The index of the node to move up.
      * @private
      */
-    private siftUp(index: number): void {
+    public siftUp(index: number): void {
 
         let parent = this.parentIndex(index);
         while (index > 0 && this.compare(this.data[parent], this.data[index]) > 0) {
@@ -132,7 +131,7 @@ export default class Heap<T> {
      * @param {number} nodeIndex The index of the node to move down.
      * @private
      */
-    private siftDown(nodeIndex: number): void {
+    public siftDown(nodeIndex: number): void {
 
         //smaller child index
         let min = this.minIndex(this.leftChildIndex(nodeIndex),

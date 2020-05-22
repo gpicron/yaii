@@ -12,7 +12,7 @@ test('basic depth 2', t => {
         timestamp: 1585556464532
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     docPacker.add(doc1)
@@ -27,7 +27,7 @@ test('array of number', t => {
         value: [1, 2, 3]
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     docPacker.add(doc1)
@@ -42,7 +42,7 @@ test('array of string', t => {
         value: ['a', 'aaze', 'qseaze']
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     docPacker.add(doc1)
@@ -83,7 +83,7 @@ test('example', t => {
         timestamp: 1585556464532
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     docPacker.add(doc1)
@@ -100,7 +100,7 @@ test('basic array of string', t => {
         number_data: 25
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     docPacker.add(doc1)
@@ -139,7 +139,7 @@ test('basic array of docs', t => {
         }
     ]
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(docs[2], docPacker.store)
     //testDecode(0, docPacker.store)
@@ -216,7 +216,7 @@ test('complex', t => {
         timestamp: 1585556464531
     }
 
-    const docPacker = new DocPackedArray(10)
+    const docPacker = DocPackedArray.createNew(10)
 
     //testEncode(doc1, docPacker.store)
     // @ts-ignore
@@ -273,7 +273,7 @@ test('complex 2', t => {
         timestamp: 1585561165734
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     // @ts-ignore
@@ -326,7 +326,7 @@ test('complex 3', t => {
         timestamp: 1585561192927.001
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     // @ts-ignore
@@ -358,7 +358,7 @@ test('complex 4', t => {
         timestamp: 1585556290062.001
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     // @ts-ignore
@@ -379,7 +379,7 @@ test('mixed array', t => {
         ]
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     //testEncode(doc1, docPacker.store)
     // @ts-ignore
@@ -396,7 +396,7 @@ test('array of record', t => {
         value: [{id: '1'}, {id: '2'}, {id: '3'}]
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     docPacker.add(doc1)
     testDecode(0, docPacker.store)
@@ -653,7 +653,7 @@ test('array of msgs larger than initial buffer', t => {
     tested.push(doc1[7])
     tested.push(doc1[8])
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
     tested.forEach(e => docPacker.add(e))
 
@@ -734,7 +734,7 @@ test('null in field', t => {
         timestamp: 1585561331589.002
     }
 
-    const docPacker = new DocPackedArray()
+    const docPacker = DocPackedArray.createNew()
 
 
     // @ts-ignore

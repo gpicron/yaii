@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-ignore */
-import { RoaringBitmap32 } from 'roaring'
+import {RoaringBitmap32} from 'roaring'
 import {Doc, DocId, FieldValue, ResultItem} from '../../api/base'
 import {ICompareFunction, REFERENCE_COLLATOR_COMPARATOR} from '../utils'
 import ByteBuffer = require('bytebuffer')

@@ -1,13 +1,10 @@
-import {ALL_EXP, Exp} from "./base"
-import {MutableSegment} from "../mutable-segment"
-import {removeAll} from "../utils"
-import {DocidAsyncIterable, orMany} from "../datastructs/docid-async-iterable/docid-async-iterable"
-import {BitmapDocidAsyncIterable} from "../datastructs/docid-async-iterable/bitmap-docid-async-iterable"
-import {
-    cloneIfNotReusable,
-    SingletonDocidAsyncIterable
-} from "../datastructs/docid-async-iterable/singleton-docid-async-iterable"
-
+import {ALL_EXP, AllExp, Exp, NoneExp} from "./base"
+import {MutableSegment} from "../segments/mutable-segment"
+import {removeAllFromSet} from "../utils"
+import {andMany, andNot, orMany} from "../datastructs/docid-async-iterable/operations"
+import {BaseSegment} from "../segments/segment"
+import {EMPTY_MAP, RangeDocidAsyncIterable} from "../datastructs/docid-async-iterable/range-docid-async-iterable"
+import {DocIdIterable} from "../datastructs/docid-async-iterable/base"
 
 
 export class BooleanExpression implements Exp {
@@ -41,7 +38,7 @@ export class BooleanExpression implements Exp {
         return result
     }
 
-    rewrite(segment?: MutableSegment): Exp {
+    rewrite(segment?: BaseSegment): Exp {
         const should = new Set<Exp>()
         // rewrite should clauses, remove duplicates and bubble up when possible
         if (this.should.length > 0) {
@@ -49,7 +46,11 @@ export class BooleanExpression implements Exp {
                 if (q instanceof BooleanExpression) {
                     const nq = q.rewrite(segment)
 
-                    if (nq instanceof BooleanExpression && nq.isShouldOnly()) {
+                    if (nq instanceof AllExp) {
+                        should.clear();
+                        should.add(nq);
+                        break;
+                    } else if (nq instanceof BooleanExpression && nq.isShouldOnly()) {
                         q.should.forEach(value => should.add(value))
                     } else {
                         should.add(nq)
@@ -79,6 +80,10 @@ export class BooleanExpression implements Exp {
                     } else {
                         must.add(nq)
                     }
+                } else if (q instanceof AllExp) {
+                    // nothing to add
+                } else if (q instanceof NoneExp) {
+                    return q
                 } else {
                     must.add(q)
                 }
@@ -97,6 +102,10 @@ export class BooleanExpression implements Exp {
                     } else {
                         mustNot.add(nq)
                     }
+                } else if (q instanceof AllExp) {
+                    return new NoneExp()
+                } else if (q instanceof NoneExp) {
+                    // ignore
                 } else {
                     mustNot.add(q)
                 }
@@ -105,8 +114,8 @@ export class BooleanExpression implements Exp {
 
         // remove should that are also must or mustNot
         if (should.size > 0) {
-            removeAll(should, must)
-            removeAll(should, mustNot)
+            removeAllFromSet(should, must)
+            removeAllFromSet(should, mustNot)
         }
 
         // bubble up must(mustNot) ==> mustNot
@@ -122,7 +131,7 @@ export class BooleanExpression implements Exp {
         // if there is same in must and mustNot return None
         if (mustNot.size > 0) {
             for (const m of must) {
-                if (mustNot.has(m)) return ALL_EXP
+                if (mustNot.has(m)) return new NoneExp()
             }
         }
 
@@ -131,7 +140,7 @@ export class BooleanExpression implements Exp {
             return must.values().next().value
         }
 
-        // if the query resume to 1 must clause, bubble up
+
         if (must.size == 0 && should.size == 0 && mustNot.size == 0) {
             return ALL_EXP
         }
@@ -139,94 +148,24 @@ export class BooleanExpression implements Exp {
         return new BooleanExpression(Array.from(should), Array.from(must), Array.from(mustNot))
     }
 
-    async resolve(segment: MutableSegment, forceResolveToBitmap: boolean = false): Promise<DocidAsyncIterable> {
-        const resolvedMust = this.must.map(async oper => oper.resolve(segment, true))
+    async resolve(segment: MutableSegment, forceResolveToBitmap: boolean = false): Promise<DocIdIterable> {
+        const promiseMust = 
+            this.must.map( async oper => oper.resolve(segment, true))
+        
 
-        const mapMusts = new Array<DocidAsyncIterable>()
-        const lazyMusts = new Array<DocidAsyncIterable>()
-
-        for await (const m of resolvedMust) {
-            if (BitmapDocidAsyncIterable.is(m) || SingletonDocidAsyncIterable.is(m)) {
-                if (m.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
-                mapMusts.push(m)
-            } else {
-                lazyMusts.push(m)
-            }
+        const resolvedMust = new Array<DocIdIterable>()
+        for  (const pm of promiseMust) {
+            const m = await pm
+            if (m.cost == 0) return EMPTY_MAP
+            resolvedMust.push(m)
         }
 
-        const resolvedMustNots = this.mustNot.map(async oper => oper.resolve(segment, true))
+        const resolvedMustNots = (await Promise.all(
+            this.mustNot.map(async oper => oper.resolve(segment, true))
+        )).filter(oper => oper.cost > 0)
 
-        const mapMustNots = new Array<DocidAsyncIterable>()
-        const lazyMustNots = new Array<DocidAsyncIterable>()
-
-        for await (const m of resolvedMustNots) {
-            if (BitmapDocidAsyncIterable.is(m) || SingletonDocidAsyncIterable.is(m)) {
-                if (m.size > 0) mapMustNots.push(m)
-            } else {
-                lazyMustNots.push(m)
-            }
-        }
-
-        let must: BitmapDocidAsyncIterable | undefined
-        let mustNot: BitmapDocidAsyncIterable | undefined
-
-        if (resolvedMust.length > 0) {
-            if (mapMusts.length > 0) {
-                mapMusts.sort((a, b) => a.size - b.size)
-                const first = mapMusts.shift() as DocidAsyncIterable
-                must = cloneIfNotReusable(first)
-
-                // first, and(all must bitmaps)
-                for (const nextMust of mapMusts) {
-                    must.andInPlace(nextMust)
-                    if (must.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
-                }
-                // and remove all mustNots
-                for (const nextMustNot of mapMustNots) {
-                    must.andNotInPlace(nextMustNot)
-                    if (must.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
-                }
-            }
-
-            if (lazyMusts.length > 0) {
-                if (must == undefined) {
-                    const first = lazyMusts.shift() as DocidAsyncIterable
-
-                    must = new BitmapDocidAsyncIterable()
-                    for await (const index of first) must.add(index)
-                }
-
-                // first, and(all must bitmaps)
-                for (const nextMust of lazyMusts) {
-                    let low = 0
-                    for await (const index of nextMust) {
-                        const high = index
-
-                        if (low < high) must.removeRange(low, high)
-                        low = high + 1
-                    }
-                    must.removeRange(low, 4294967297)
-
-                    if (must.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
-                }
-                // and remove all mustNots
-                for (const nextMustNot of lazyMustNots) {
-                    for await (const index of nextMustNot) must.remove(index)
-
-                    if (must.size == 0) return BitmapDocidAsyncIterable.EMPTY_MAP
-                }
-            }
-        } else if (resolvedMustNots.length > 0) {
-            mustNot = orMany(mapMustNots)
-
-            for (const nextMustNot of lazyMustNots) {
-                for await (const index of nextMustNot) mustNot.add(index)
-            }
-        }
-
-        /// ----- Lazy resolve not optimal for now, force resolve
-        forceResolveToBitmap = true
-        /// ---
+        const must = resolvedMust.length === 0 ? undefined : andMany(resolvedMust)
+        const mustNot = orMany(resolvedMustNots)
 
         const should = this.should.map(async (exp: Exp) => exp.resolve(segment, forceResolveToBitmap))
 
@@ -234,71 +173,24 @@ export class BooleanExpression implements Exp {
             if (must) {
                 return must
             } else if (mustNot) {
-                mustNot.flipRange(segment.from, segment.next)
-
-                return mustNot
+                return andNot(new RangeDocidAsyncIterable(0, segment.rangeSize), mustNot)
             } else {
                 throw new Error('bug')
             }
         } else if (should.length == 1) {
             throw new Error('bug')
         } else {
-            if (forceResolveToBitmap || true) {
-                const allShouldBitmaps = await Promise.all(should)
+            const allShoulds = orMany(await Promise.all(should))
 
-                const singletons = new Array<SingletonDocidAsyncIterable>()
-                const bitmaps = new Array<BitmapDocidAsyncIterable>()
-
-                for (const didai of allShouldBitmaps) {
-                    if (didai.size > 0) {
-                        if (BitmapDocidAsyncIterable.is(didai)) {
-                            bitmaps.push(didai)
-                        } else {
-                            singletons.push(didai as SingletonDocidAsyncIterable)
-                        }
-                    }
-                }
-
-                let result
-                if (bitmaps.length > 0) {
-                    result = orMany(bitmaps)
+            if (must) {
+                const a = andMany([must, allShoulds])
+                if (a) {
+                    return andNot(a, mustNot)
                 } else {
-                    result = new BitmapDocidAsyncIterable()
-                }
-
-                for (const singleton of singletons) {
-                    result.add(singleton.index)
-                }
-
-                if (must) {
-                    return result.andInPlace(must)
-                } else if (mustNot) {
-                    return result.andNotInPlace(mustNot)
-                } else {
-                    return result
+                    throw new Error("bug")
                 }
             } else {
-                // TODO must implement a parallel traversal feature here.  This version provides ids out of order
-                // and with duplicate.  For now, we for resolve to bitmap first
-                /*const result = as(should).pipe(
-                    op.flatMap(async value => {
-                        if (BitmapDocidAsyncIterable.is(value)) {
-                            if (must) {
-                                return cloneIfNotReusable(
-                                    await value
-                                ).andInPlace(must)
-                            } else if (mustNot) {
-                                return cloneIfNotReusable(
-                                    await value
-                                ).andNotInPlace(mustNot)
-                            } else {
-                                return value
-                            }
-                        } else return value
-                    })
-                )
-*/
-                throw new Error('not yet implemented')
+                return andNot(allShoulds, mustNot)
             }
         }
     }

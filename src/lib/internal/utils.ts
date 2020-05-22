@@ -1,6 +1,10 @@
-import {FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue, isIntegerValue} from '../api/base'
+import {DocId, FieldName, FieldStorableValue, FieldValue, FieldValues, isFieldValue, isIntegerValue} from '../api/base'
 import {Term} from './query-ir/term-exp'
 import {FieldConfigFlagSet} from "../api/config"
+import {BaseSegment} from "./segments/segment"
+import {DocIdIterable} from "./datastructs/docid-async-iterable/base"
+import {RangeDocidAsyncIterable} from "./datastructs/docid-async-iterable/range-docid-async-iterable"
+import {andMany, andNot} from "./datastructs/docid-async-iterable/operations"
 
 export type ExtFieldsIndexConfig = Record<FieldName, ExtFieldConfig>
 
@@ -15,9 +19,10 @@ export type ExtIndexConfig = {
     defaultFieldConfig: ExtFieldConfig
     storeSourceDoc: boolean
     allFieldConfig: ExtFieldConfig
+    storePath: string
 }
 
-export function removeAll<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void {
+export function removeAllFromSet<T>(originalSet: Set<T>, toBeRemovedSet: Set<T>): void {
     ;[...toBeRemovedSet].forEach(function(v) {
         originalSet.delete(v)
     })
@@ -29,7 +34,8 @@ export type IEqualsFunction<T> = (a: T, b: T) => boolean
 export enum INTERNAL_FIELDS {
     FIELDS = '£_FIELD',
     ALL = '£_ALL',
-    SOURCE = '£_SOURCE'
+    SOURCE = '£_SOURCE',
+    FILTER_CACHE = '£_FILTER_CACHE'
 }
 
 export const REFERENCE_COLLATOR_COMPARATOR = new Intl.Collator(["en", 'fr', 'de'], {
@@ -177,3 +183,38 @@ export function opinionatedCompare(a: FieldValue | undefined | Buffer, b: FieldV
     }
 }
 
+export function assertUnreachable(x: never): never {
+    throw new Error(`Didn't expect to get here ${x}`);
+}
+
+export async function waitForImmediate(): Promise<void> {
+    return new Promise(resolve => {
+        setImmediate(() => resolve() )
+    })
+}
+
+export type SegmentRange = {
+    segment: BaseSegment,
+    from: DocId,
+    count: number
+}
+export function removeDeletedAndAddedAfter(docIds: DocIdIterable, segmentRange: SegmentRange): DocIdIterable {
+    const deleted = segmentRange.segment.deleted()
+    const first = segmentRange.from
+    const count = segmentRange.count
+    if (RangeDocidAsyncIterable.is(docIds)) {
+        if (deleted.cost === 0) {
+            return andMany([docIds, new RangeDocidAsyncIterable(first, count)])
+        } else {
+            return deleted.clone().removeRange(0, first).flipRange(first, first + count).removeRange(first + count)
+        }
+    } else {
+        const docIdIterable = andMany([docIds, new RangeDocidAsyncIterable(segmentRange.from, segmentRange.count)])
+        if (docIdIterable) {
+            return andNot(docIdIterable, deleted)
+        } else {
+            throw new Error("bug")
+        }
+    }
+    return docIds
+}

@@ -11,3 +11,5 @@ flycheck_*
 /scratch
 /secrets
 /.idea/
+/db-test/
+/*v8.log

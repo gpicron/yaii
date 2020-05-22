@@ -10,14 +10,15 @@ import {
     TokenQuery
 } from '../../api/query'
 import * as Long from 'long'
-import {FieldName, QueryOperator} from "../../api/base"
+import {FieldName, QueryOperator, TokenValue} from "../../api/base"
 import {ALL_EXP, Exp, NoneExp} from "./base"
 import {Term, TermExp} from "./term-exp"
 import {BooleanExpression} from "./boolean-exp"
 import {INTERNAL_FIELDS} from "../utils"
-import {MutableSegment} from "../mutable-segment"
+import {BaseSegment} from "../segments/segment"
+import {CachedFilter} from "./cached-filter"
 
-enum TermPrefix {
+export enum TermPrefix {
     STRING = "0",
     NUMBER_L0 = "1",
     NUMBER_L1 = "2",
@@ -36,22 +37,48 @@ enum TermPrefix {
 export const TERM_TRUE = TermPrefix.BOOLEAN_TRUE
 export const TERM_FALSE = TermPrefix.BOOLEAN_FALSE
 
+export function termToToken(term: Term): TokenValue {
+    switch (term[0]) {
+        case TermPrefix.STRING:
+            return term.substring(1)
+        case TermPrefix.BOOLEAN_TRUE:
+            return true
+        case TermPrefix.BOOLEAN_FALSE:
+            return false
+        default:
+            throw new Error("Not yet implemented")
+    }
+}
+
 export function stringToTerm(token: string): Term {
     return TermPrefix.STRING + token
 }
-/*
-function stringToTermBuffer(token: string): Buffer {
-    const data = Buffer.from(token, 'utf8')
-    const result = Buffer.allocUnsafe(data.length + 1)
-
-    result[0] = TermPrefix.BUFFER_OR_STRING
-    data.copy(result, 1)
-
-    return result
-}
-*/
 
 const ENCODING_DIGITS = "+/0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+export function convertU32ToLex64(n: number): string {
+    const long = Long.fromNumber(n, true)
+    const hi = long.high
+    const lo = long.low
+
+    // we keep only 54 bits 9 * 6 bits digits (in little endian order)
+
+    const digits = [
+        lo & 0x3F,
+        lo >>> 6 & 0x3F,
+        lo >>> 12 & 0x3F,
+        lo >>> 18 & 0x3F,
+        lo >>> 24 & 0x3F,
+        (lo >>> 30 & 0x3F) + (hi << 2 & 0x3F),
+    ]
+
+    let next = ""
+    for (let i = 0; i < 6; i++) {
+        next += ENCODING_DIGITS[digits[i]]
+    }
+
+    return next
+}
 
 function extractNumberTerms(long: Long): Term[] {
     const hi = long.high
@@ -97,12 +124,16 @@ function fieldNameOrAll(q: LeafQuery): FieldName | INTERNAL_FIELDS.ALL {
     return q.field || INTERNAL_FIELDS.ALL
 }
 
-export function buildFilterExpression(query: Query, segment: MutableSegment): Exp {
+export function buildFilterExpression(query: Query, segment: BaseSegment): Exp {
     switch (query.operator) {
         case QueryOperator.ALL:
             return ALL_EXP
         case QueryOperator.TOKEN: {
             const q = query as TokenQuery
+
+            if (q.field === INTERNAL_FIELDS.FILTER_CACHE) {
+                return q as CachedFilter
+            }
 
             let values = q.value
 
@@ -193,7 +224,7 @@ export function buildFilterExpression(query: Query, segment: MutableSegment): Ex
     }
 }
 
-export function rangeToExp(field: FieldName, fromRange: Long, level: number, fromRem: number, toRem: number, segment: MutableSegment): Exp {
+export function rangeToExp(field: FieldName, fromRange: Long, level: number, fromRem: number, toRem: number, segment: BaseSegment): Exp {
     if (level == 0) {
         const rangeTerm = extractNumberTerms(fromRange.shiftLeft(6))[8]
         const rangeTermExp = new TermExp(field, rangeTerm)
@@ -234,7 +265,7 @@ export function rangeToExp(field: FieldName, fromRange: Long, level: number, fro
     return new NoneExp()
 }
 
-export function addRange(field: FieldName, from: Long, to: Long, level: number, segment: MutableSegment): Exp[] {
+export function addRange(field: FieldName, from: Long, to: Long, level: number, segment: BaseSegment): Exp[] {
     let terms = new Array<Exp>()
     if (from.gte(to)) return terms
 

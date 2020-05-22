@@ -58,7 +58,7 @@ var createHeap5 = function (t: ExecutionContext<TestContext>) {
 };
 
 
-test('Gives the right size 1',
+test('Gives the right rangeSize 1',
     t => {
         createHeap1(t);
         t.assert(t.context.heap.size()== 4);
@@ -66,7 +66,7 @@ test('Gives the right size 1',
         t.assert(t.context.heap.size()== 3);
     });
 
-test('Gives the right size 2',
+test('Gives the right rangeSize 2',
     t => {
         createHeap1(t);
         t.context.heap.removeRoot();
@@ -76,7 +76,7 @@ test('Gives the right size 2',
         t.assert(t.context.heap.size()== 0);
     });
 
-test('Gives the right size with strings',
+test('Gives the right rangeSize with strings',
     t => {
         createHeap1(t);
         t.context.heap.removeRoot();

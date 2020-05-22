@@ -9,7 +9,7 @@ import {
     Query,
     TokenQuery
 } from "./query"
-import {FieldName, TokenValue, IntegerValue, QueryOperator} from "./base"
+import {FieldName, IntegerValue, QueryOperator, TokenValue} from "./base"
 
 export function token(token: TokenValue | TokenValue[], field?: FieldName): TokenQuery {
     return {

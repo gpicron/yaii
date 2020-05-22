@@ -60,6 +60,7 @@ export interface NotQuery extends Query {
     readonly operand: Query
 }
 
+
 export enum SortDirection {
     ASCENDING = 'ASC',
     DESCENDING = 'DESC'
